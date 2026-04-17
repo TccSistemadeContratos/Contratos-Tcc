@@ -18,6 +18,7 @@ export const Incidents: React.FC = () => {
   const [incidents, setIncidents] = useState<any[]>([]);
   const [contracts, setContracts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     contractId: '',
@@ -54,6 +55,7 @@ export const Incidents: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaving(true);
     try {
       await addDoc(collection(db, 'incidents'), {
         ...formData,
@@ -61,8 +63,18 @@ export const Incidents: React.FC = () => {
         createdAt: new Date().toISOString()
       });
       setShowModal(false);
+      setFormData({
+        contractId: '',
+        system: '',
+        priority: 'Médio',
+        openedAt: new Date().toISOString().slice(0, 16),
+        status: 'Aberto',
+        supplierContact: ''
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'incidents');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -191,6 +203,7 @@ export const Incidents: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   value={formData.contractId}
                   onChange={e => setFormData({...formData, contractId: e.target.value})}
+                  disabled={saving}
                 >
                   <option value="">Selecione o contrato...</option>
                   {contracts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -203,6 +216,7 @@ export const Incidents: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   value={formData.system}
                   onChange={e => setFormData({...formData, system: e.target.value})}
+                  disabled={saving}
                 />
               </div>
               <div className="space-y-1">
@@ -211,6 +225,7 @@ export const Incidents: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   value={formData.priority}
                   onChange={e => setFormData({...formData, priority: e.target.value})}
+                  disabled={saving}
                 >
                   <option value="Crítico">Crítico</option>
                   <option value="Alto">Alto</option>
@@ -226,6 +241,7 @@ export const Incidents: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   value={formData.openedAt}
                   onChange={e => setFormData({...formData, openedAt: e.target.value})}
+                  disabled={saving}
                 />
               </div>
               <div className="space-y-1">
@@ -234,21 +250,25 @@ export const Incidents: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   value={formData.supplierContact}
                   onChange={e => setFormData({...formData, supplierContact: e.target.value})}
+                  disabled={saving}
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button 
                   type="button"
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg transition"
+                  disabled={saving}
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm flex items-center gap-2 disabled:bg-blue-400"
+                  disabled={saving}
                 >
-                  Abrir Chamado
+                  {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  {saving ? 'Enviando...' : 'Abrir Chamado'}
                 </button>
               </div>
             </form>
