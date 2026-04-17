@@ -64,6 +64,18 @@ export const Contracts: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (showModal && contracts.length >= 0) {
+      // Encontrar o maior número atual ou começar em 1
+      const numbers = contracts.map(c => {
+        const n = parseInt(c.contractNumber);
+        return isNaN(n) ? 0 : n;
+      });
+      const nextNumber = Math.max(0, ...numbers) + 1;
+      setFormData(prev => ({ ...prev, contractNumber: nextNumber.toString() }));
+    }
+  }, [showModal, contracts]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -278,11 +290,11 @@ export const Contracts: React.FC = () => {
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700">Número do Contrato</label>
                   <input 
-                    required
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                    readOnly
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed outline-none"
                     value={formData.contractNumber}
-                    onChange={e => setFormData({...formData, contractNumber: e.target.value})}
                   />
+                  <p className="text-[10px] text-slate-400">Gerado automaticamente pelo sistema.</p>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700">Nome do Contrato</label>
