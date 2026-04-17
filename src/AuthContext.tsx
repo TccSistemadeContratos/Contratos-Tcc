@@ -26,27 +26,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setProfile(userDoc.data());
+      try {
+        setUser(firebaseUser);
+        if (firebaseUser) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+            if (userDoc.exists()) {
+              setProfile(userDoc.data());
+            } else {
+              // Create default profile for new users
+              const newProfile = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email,
+                displayName: firebaseUser.displayName,
+                role: 'viewer',
+                createdAt: new Date().toISOString(),
+              };
+              await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
+              setProfile(newProfile);
+            }
+          } catch (fsError) {
+            console.error('Erro ao acessar perfil no Firestore:', fsError);
+            // Mesmo com erro no Firestore, permitimos o login para que o usuário veja a interface
+            setProfile({ role: 'viewer', email: firebaseUser.email });
+          }
         } else {
-          // Create default profile for new users
-          const newProfile = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            role: 'viewer',
-            createdAt: new Date().toISOString(),
-          };
-          await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
-          setProfile(newProfile);
+          setProfile(null);
         }
-      } else {
-        setProfile(null);
+      } catch (authError) {
+        console.error('Erro de autenticação:', authError);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
