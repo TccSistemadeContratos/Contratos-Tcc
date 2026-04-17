@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user with role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "manager", "viewer"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "IT service provider.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "contactEmail": { "type": "string", "format": "email" },
+        "slaScore": { "type": "number", "description": "Average SLA compliance percentage" },
+        "totalIncidents": { "type": "number" },
+        "violations": { "type": "number" }
+      },
+      "required": ["name"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "IT service contract details.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "contractNumber": { "type": "string" },
+        "name": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "area": { "type": "string", "description": "IT Area responsible" },
+        "type": { "type": "string", "enum": ["Suporte", "Software", "Infraestrutura", "Cloud"] },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "value": { "type": "number" },
+        "internalOwner": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Ativo", "Vencido", "Em renovação"] },
+        "pdfUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contractNumber", "name", "supplierId", "startDate", "endDate", "status"]
+    },
+    "SLA": {
+      "title": "SLA Definition",
+      "description": "SLA targets for a specific contract.",
+      "type": "object",
+      "properties": {
+        "contractId": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Crítico", "Alto", "Médio", "Baixo"] },
+        "responseTimeLimit": { "type": "number", "description": "Hours" },
+        "resolutionTimeLimit": { "type": "number", "description": "Hours" },
+        "availabilityTarget": { "type": "number", "description": "Percentage" },
+        "penalty": { "type": "string" }
+      },
+      "required": ["contractId", "priority", "responseTimeLimit", "resolutionTimeLimit"]
+    },
+    "Incident": {
+      "title": "Incident",
+      "description": "Service incident or ticket.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "contractId": { "type": "string" },
+        "system": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Crítico", "Alto", "Médio", "Baixo"] },
+        "openedAt": { "type": "string", "format": "date-time" },
+        "firstResponseAt": { "type": "string", "format": "date-time" },
+        "resolvedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Aberto", "Em Atendimento", "Resolvido", "Cancelado"] },
+        "supplierContact": { "type": "string" },
+        "responseTime": { "type": "number", "description": "Hours" },
+        "resolutionTime": { "type": "number", "description": "Hours" },
+        "slaResponseStatus": { "type": "string", "enum": ["Cumprido", "Violado"] },
+        "slaResolutionStatus": { "type": "string", "enum": ["Cumprido", "Violado"] }
+      },
+      "required": ["contractId", "priority", "openedAt", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System alerts and notifications.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["vencimento", "violação", "performance"] },
+        "message": { "type": "string" },
+        "contractId": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["message", "type", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/suppliers/{supplierId}": { "schema": "Supplier", "description": "IT Suppliers" },
+    "/contracts/{contractId}": { "schema": "Contract", "description": "IT Contracts" },
+    "/contracts/{contractId}/slas/{slaId}": { "schema": "SLA", "description": "SLA definitions per contract" },
+    "/incidents/{incidentId}": { "schema": "Incident", "description": "Service incidents" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "System alerts" }
+  }
+}

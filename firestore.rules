@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields: uid, email, displayName, role (admin|manager|viewer), createdAt
+    //
+    // Collection: suppliers
+    // Document ID: {supplierId}
+    // Fields: name, contactEmail, slaScore, totalIncidents, violations
+    //
+    // Collection: contracts
+    // Document ID: {contractId}
+    // Fields: contractNumber, name, supplierId, supplierName, area, type, startDate, endDate, value, internalOwner, description, status, pdfUrl, createdAt
+    //
+    // Collection: contracts/{contractId}/slas
+    // Document ID: {slaId}
+    // Fields: contractId, priority, responseTimeLimit, resolutionTimeLimit, availabilityTarget, penalty
+    //
+    // Collection: incidents
+    // Document ID: {incidentId}
+    // Fields: contractId, system, priority, openedAt, firstResponseAt, resolvedAt, status, supplierContact, responseTime, resolutionTime, slaResponseStatus, slaResolutionStatus
+    //
+    // Collection: notifications
+    // Document ID: {notificationId}
+    // Fields: type, message, contractId, read, createdAt
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "projetocontratosfacul@gmail.com" && request.auth.token.email_verified == true));
+    }
+    
+    function isManager() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager' || isAdmin());
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(uid) && 
+                      request.resource.data.role == 'viewer' && 
+                      request.resource.data.uid == uid;
+      allow update: if isAdmin() || (isOwner(uid) && request.resource.data.role == resource.data.role);
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /contracts/{contractId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+      
+      match /slas/{slaId} {
+        allow read: if isAuthenticated();
+        allow write: if isManager();
+      }
+    }
+
+    match /incidents/{incidentId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+  }
+}
