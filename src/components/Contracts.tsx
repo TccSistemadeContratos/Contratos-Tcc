@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   collection, 
   onSnapshot, 
@@ -9,9 +9,10 @@ import {
   query,
   orderBy
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
-import { Plus, Search, Filter, MoreVertical, FileText, ExternalLink, Trash2, Edit } from 'lucide-react';
+import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Edit, Upload, X, Loader2 } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 
 export const Contracts: React.FC = () => {
@@ -19,8 +20,12 @@ export const Contracts: React.FC = () => {
   const [contracts, setContracts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [formData, setFormData] = useState({
     contractNumber: '',
     name: '',
@@ -59,17 +64,40 @@ export const Contracts: React.FC = () => {
     };
   }, []);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.type !== 'application/pdf') {
+        alert('Por favor, selecione apenas arquivos PDF.');
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploading(true);
     try {
+      let pdfUrl = '';
+      
+      if (selectedFile) {
+        const storageRef = ref(storage, `contracts/${Date.now()}_${selectedFile.name}`);
+        const uploadResult = await uploadBytes(storageRef, selectedFile);
+        pdfUrl = await getDownloadURL(uploadResult.ref);
+      }
+
       const supplier = suppliers.find(s => s.id === formData.supplierId);
       await addDoc(collection(db, 'contracts'), {
         ...formData,
         supplierName: supplier?.name || '',
         createdAt: new Date().toISOString(),
-        value: Number(formData.value)
+        value: Number(formData.value),
+        pdfUrl
       });
+
       setShowModal(false);
+      setSelectedFile(null);
       setFormData({
         contractNumber: '',
         name: '',
@@ -85,6 +113,18 @@ export const Contracts: React.FC = () => {
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'contracts');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Tem certeza que deseja excluir este contrato?')) {
+      try {
+        await deleteDoc(doc(db, 'contracts', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, 'contracts');
+      }
     }
   };
 
@@ -187,10 +227,24 @@ export const Contracts: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {contract.pdfUrl && (
+                        <a 
+                          href={contract.pdfUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                          title="Ver PDF"
+                        >
+                          <ExternalLink size={18} />
+                        </a>
+                      )}
                       <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
                         <Edit size={18} />
                       </button>
-                      <button className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                      <button 
+                        onClick={() => handleDelete(contract.id)}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                      >
                         <Trash2 size={18} />
                       </button>
                     </div>
@@ -303,6 +357,7 @@ export const Contracts: React.FC = () => {
                   />
                 </div>
               </div>
+              
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Responsável Interno</label>
                 <input 
@@ -312,6 +367,7 @@ export const Contracts: React.FC = () => {
                   onChange={e => setFormData({...formData, internalOwner: e.target.value})}
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Descrição</label>
                 <textarea 
@@ -320,19 +376,69 @@ export const Contracts: React.FC = () => {
                   onChange={e => setFormData({...formData, description: e.target.value})}
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-4">
+
+              {/* PDF Upload Field */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Documento do Contrato (PDF)</label>
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className={cn(
+                    "border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors",
+                    selectedFile ? "border-emerald-200 bg-emerald-50" : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
+                  )}
+                >
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept="application/pdf"
+                    onChange={handleFileChange}
+                  />
+                  {selectedFile ? (
+                    <>
+                      <FileText className="text-emerald-500" size={32} />
+                      <p className="text-sm font-medium text-emerald-700">{selectedFile.name}</p>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFile(null);
+                        }}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        Remover
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="text-slate-400" size={32} />
+                      <p className="text-sm text-slate-500 font-medium">Clique para selecionar o PDF</p>
+                      <p className="text-xs text-slate-400">Apenas arquivos .pdf</p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button 
                   type="button"
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg transition"
+                  disabled={uploading}
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm"
+                  disabled={uploading}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm flex items-center gap-2 disabled:bg-blue-400"
                 >
-                  Salvar Contrato
+                  {uploading ? (
+                    <Loader2 className="animate-spin" size={20} />
+                  ) : (
+                    <Plus size={20} />
+                  )}
+                  {uploading ? 'Enviando...' : 'Salvar Contrato'}
                 </button>
               </div>
             </form>
@@ -342,19 +448,3 @@ export const Contracts: React.FC = () => {
     </div>
   );
 };
-
-const X = ({ size, className }: any) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-  </svg>
-);
