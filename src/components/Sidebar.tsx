@@ -29,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     { id: 'contracts', label: 'Contratos', icon: FileText },
     { id: 'suppliers', label: 'Fornecedores', icon: Users },
     { id: 'incidents', label: 'Chamados', icon: AlertCircle },
+    { id: 'reports', label: 'Relatórios', icon: FileText },
     { id: 'notifications', label: 'Alertas', icon: Bell },
   ];
 

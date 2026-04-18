@@ -11,6 +11,7 @@ import { Contracts } from './components/Contracts';
 import { Suppliers } from './components/Suppliers';
 import { Incidents } from './components/Incidents';
 import { Notifications } from './components/Notifications';
+import { Reports } from './components/Reports';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LogIn, ShieldCheck } from 'lucide-react';
 
@@ -95,6 +96,7 @@ export default function App() {
       case 'contracts': return <Contracts />;
       case 'suppliers': return <Suppliers />;
       case 'incidents': return <Incidents />;
+      case 'reports': return <Reports />;
       case 'notifications': return <Notifications />;
       case 'admin': return <AdminPanel />;
       default: return <Dashboard />;
