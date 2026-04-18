@@ -6,7 +6,9 @@ import {
   query,
   orderBy,
   doc,
-  updateDoc
+  updateDoc,
+  getDoc,
+  increment
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -57,11 +59,22 @@ export const Incidents: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     try {
+      const contract = contracts.find(c => c.id === formData.contractId);
+      
       await addDoc(collection(db, 'incidents'), {
         ...formData,
         openedAt: new Date(formData.openedAt).toISOString(),
         createdAt: new Date().toISOString()
       });
+
+      // Update supplier total incidents count
+      if (contract?.supplierId) {
+        const supplierRef = doc(db, 'suppliers', contract.supplierId);
+        await updateDoc(supplierRef, {
+          totalIncidents: increment(1)
+        });
+      }
+
       setShowModal(false);
       setFormData({
         contractId: '',
@@ -85,16 +98,54 @@ export const Incidents: React.FC = () => {
       const openedAt = new Date(incident.openedAt);
       const diffHours = (new Date(resolvedAt).getTime() - openedAt.getTime()) / (1000 * 60 * 60);
       
-      // Mock SLA logic: Critical < 4h, High < 8h, Medium < 24h, Low < 48h
-      const limits: any = { 'Crítico': 4, 'Alto': 8, 'Médio': 24, 'Baixo': 48 };
-      const limit = limits[incident.priority] || 24;
+      // Fetch supplier SLA limit
+      let slaLimit = 2; // Default fallback
+      const contract = contracts.find(c => c.id === incident.contractId);
+      
+      if (contract?.supplierId) {
+        const supplierDoc = await getDoc(doc(db, 'suppliers', contract.supplierId));
+        if (supplierDoc.exists()) {
+          slaLimit = supplierDoc.data().slaLimit || 2;
+        }
+      }
+
+      const isViolation = diffHours > slaLimit;
       
       await updateDoc(doc(db, 'incidents', id), {
         status: 'Resolvido',
         resolvedAt,
         resolutionTime: diffHours,
-        slaResolutionStatus: diffHours <= limit ? 'Cumprido' : 'Violado'
+        slaResolutionStatus: !isViolation ? 'Cumprido' : 'Violado'
       });
+
+      // If violated, update supplier violations count
+      if (isViolation && contract?.supplierId) {
+        const supplierRef = doc(db, 'suppliers', contract.supplierId);
+        const supplierDoc = await getDoc(supplierRef);
+        const data = supplierDoc.data();
+        const total = (data?.totalIncidents || 1);
+        const currentViolations = (data?.violations || 0) + 1;
+        
+        // Recalculate SLA Score: ((total - violations) / total) * 100
+        const newScore = Math.max(0, Math.round(((total - currentViolations) / total) * 100));
+
+        await updateDoc(supplierRef, {
+          violations: increment(1),
+          slaScore: newScore
+        });
+      } else if (!isViolation && contract?.supplierId) {
+        // Even if complied, update score in case totalIncidents changed
+        const supplierRef = doc(db, 'suppliers', contract.supplierId);
+        const supplierDoc = await getDoc(supplierRef);
+        const data = supplierDoc.data();
+        const total = (data?.totalIncidents || 1);
+        const currentViolations = (data?.violations || 0);
+        const newScore = Math.max(0, Math.round(((total - currentViolations) / total) * 100));
+        
+        await updateDoc(supplierRef, {
+          slaScore: newScore
+        });
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'incidents');
     }

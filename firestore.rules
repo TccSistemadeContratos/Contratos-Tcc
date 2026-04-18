@@ -1,99 +1,98 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: {uid}
-    // Fields: uid, email, displayName, role (admin|manager|viewer), createdAt
-    //
-    // Collection: suppliers
-    // Document ID: {supplierId}
-    // Fields: name, contactEmail, slaScore, totalIncidents, violations
-    //
-    // Collection: contracts
-    // Document ID: {contractId}
-    // Fields: contractNumber, name, supplierId, supplierName, area, type, startDate, endDate, value, internalOwner, description, status, pdfUrl, createdAt
-    //
-    // Collection: contracts/{contractId}/slas
-    // Document ID: {slaId}
-    // Fields: contractId, priority, responseTimeLimit, resolutionTimeLimit, availabilityTarget, penalty
-    //
-    // Collection: incidents
-    // Document ID: {incidentId}
-    // Fields: contractId, system, priority, openedAt, firstResponseAt, resolvedAt, status, supplierContact, responseTime, resolutionTime, slaResponseStatus, slaResolutionStatus
-    //
-    // Collection: notifications
-    // Document ID: {notificationId}
-    // Fields: type, message, contractId, read, createdAt
-    //
-    // ===============================================================
+    // Catch-all default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
     
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
     
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
-    
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Admin Check: Verify against hardcoded email OR Firestore role
     function isAdmin() {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "projetocontratosfacul@gmail.com" && request.auth.token.email_verified == true));
+      let isSystemAdmin = request.auth.token.email == "projetocontratosfacul@gmail.com" && isEmailVerified();
+      let hasAdminDoc = exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isSystemAdmin || hasAdminDoc;
     }
     
     function isManager() {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager' || isAdmin());
+      let hasManagerDoc = exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+      return isAdmin() || hasManagerDoc;
     }
 
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    // ID Validation helper
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     // ===============================================================
-    // Rules
+    // Collection Rules
     // ===============================================================
 
     match /users/{uid} {
-      allow read: if isAuthenticated();
+      allow read: if isSignedIn();
       allow create: if isOwner(uid) && 
                       request.resource.data.role == 'viewer' && 
-                      request.resource.data.uid == uid;
+                      request.resource.data.uid == uid &&
+                      request.resource.data.email == request.auth.token.email;
       allow update: if isAdmin() || (isOwner(uid) && request.resource.data.role == resource.data.role);
     }
 
     match /suppliers/{supplierId} {
-      allow read: if isAuthenticated();
-      allow write: if isManager();
+      allow read: if isSignedIn();
+      allow create: if isManager() && 
+                      request.resource.data.keys().hasAll(['name', 'contactEmail', 'createdAt']) &&
+                      request.resource.data.name is string &&
+                      request.resource.data.name.size() > 0;
+      allow update: if isManager();
+      allow delete: if isAdmin();
     }
 
     match /contracts/{contractId} {
-      allow read: if isAuthenticated();
-      allow write: if isManager();
+      allow read: if isSignedIn();
+      allow create: if isManager() && 
+                      request.resource.data.keys().hasAll(['contractNumber', 'name', 'supplierId', 'status', 'createdAt']) &&
+                      isValidId(request.resource.data.supplierId);
+      allow update: if isManager();
+      allow delete: if isAdmin();
       
       match /slas/{slaId} {
-        allow read: if isAuthenticated();
+        allow read: if isSignedIn();
         allow write: if isManager();
       }
     }
 
     match /incidents/{incidentId} {
-      allow read: if isAuthenticated();
-      allow write: if isManager();
+      allow read: if isSignedIn();
+      allow create: if isManager() && 
+                      request.resource.data.keys().hasAll(['contractId', 'system', 'priority', 'status', 'openedAt']) &&
+                      isValidId(request.resource.data.contractId);
+      allow update: if isManager();
+      allow delete: if isAdmin();
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow write: if isManager();
+      allow read: if isSignedIn();
+      allow update: if isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow write: if isAdmin();
     }
   }
 }

@@ -20,6 +20,7 @@ export const Suppliers: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     contactEmail: '',
+    slaLimit: 2,
     slaScore: 100,
     totalIncidents: 0,
     violations: 0
@@ -48,7 +49,7 @@ export const Suppliers: React.FC = () => {
         createdAt: new Date().toISOString()
       });
       setShowModal(false);
-      setFormData({ name: '', contactEmail: '', slaScore: 100, totalIncidents: 0, violations: 0 });
+      setFormData({ name: '', contactEmail: '', slaLimit: 2, slaScore: 100, totalIncidents: 0, violations: 0 });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'suppliers');
     } finally {
@@ -97,14 +98,18 @@ export const Suppliers: React.FC = () => {
               <h3 className="text-xl font-bold text-slate-900 mb-1">{supplier.name}</h3>
               <p className="text-sm text-slate-500 mb-6">{supplier.contactEmail}</p>
 
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+              <div className="grid grid-cols-3 gap-2 pt-4 border-t border-slate-100">
                 <div>
-                  <p className="text-xs text-slate-400 uppercase font-semibold">Incidentes</p>
-                  <p className="text-lg font-bold text-slate-900">{supplier.totalIncidents || 0}</p>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">Meta SLA</p>
+                  <p className="text-sm font-bold text-slate-900">{supplier.slaLimit || 2}h</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 uppercase font-semibold">Violações</p>
-                  <p className="text-lg font-bold text-red-600">{supplier.violations || 0}</p>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">Total</p>
+                  <p className="text-sm font-bold text-slate-900">{supplier.totalIncidents || 0}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">Violações</p>
+                  <p className="text-sm font-bold text-red-600">{supplier.violations || 0}</p>
                 </div>
               </div>
             </div>
@@ -148,6 +153,22 @@ export const Suppliers: React.FC = () => {
                   onChange={e => setFormData({...formData, contactEmail: e.target.value})}
                   disabled={saving}
                 />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Meta de SLA (Horas de atendimento)</label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="number"
+                    min="1"
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                    value={formData.slaLimit}
+                    onChange={e => setFormData({...formData, slaLimit: parseInt(e.target.value)})}
+                    disabled={saving}
+                  />
+                  <span className="text-slate-500 font-medium">horas</span>
+                </div>
+                <p className="text-xs text-slate-400 italic">Tempo máximo acordado para resolução de chamados.</p>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button 
