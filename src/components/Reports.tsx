@@ -19,12 +19,7 @@ import {
 } from 'lucide-react';
 import { cn, formatDate, formatCurrency } from '../lib/utils';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
-
-// Type definition for jsPDF with autoTable
-interface JSPDFWithAutoTable extends jsPDF {
-  autoTable: (options: any) => jsPDF;
-}
+import autoTable from 'jspdf-autotable';
 
 export const Reports: React.FC = () => {
   const [contracts, setContracts] = useState<any[]>([]);
@@ -156,7 +151,7 @@ export const Reports: React.FC = () => {
       doc.setFontSize(16);
       doc.text(title, 15, 55);
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: 65,
         head: [columns],
         body: tableData,
