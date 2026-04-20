@@ -56,7 +56,7 @@ export const Reports: React.FC = () => {
     
     // Simulate a bit of delay for the "modern" feel
     setTimeout(() => {
-      const doc = new jsPDF() as JSPDFWithAutoTable;
+      const doc = new jsPDF() as any;
       const pageWidth = doc.internal.pageSize.getWidth();
       
       // Header

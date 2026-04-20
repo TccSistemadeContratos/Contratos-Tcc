@@ -8,17 +8,66 @@ import {
   doc,
   updateDoc,
   getDoc,
-  increment
+  increment,
+  where
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Plus, Search, AlertCircle, CheckCircle2, Clock, MoreVertical, Filter } from 'lucide-react';
 import { formatDate, cn } from '../lib/utils';
 
+const IncidentTimer: React.FC<{ incident: any, contract: any, suppliers: any[] }> = ({ incident, contract, suppliers }) => {
+  const [timeLeft, setTimeLeft] = useState<string>('--:--:--');
+  const [isOverdue, setIsOverdue] = useState(false);
+
+  useEffect(() => {
+    if (incident.status === 'Resolvido') return;
+
+    const supplier = suppliers.find(s => s.id === contract?.supplierId);
+    const slaLimit = supplier?.slaLimit || 2;
+    const deadline = new Date(incident.openedAt).getTime() + (slaLimit * 60 * 60 * 1000);
+
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const diff = deadline - now;
+      
+      const absDiff = Math.abs(diff);
+      const hours = Math.floor(absDiff / (1000 * 60 * 60));
+      const minutes = Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((absDiff % (1000 * 60)) / 1000);
+
+      const formatted = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      
+      if (diff < 0) {
+        setTimeLeft(`- ${formatted}`);
+        setIsOverdue(true);
+      } else {
+        setTimeLeft(formatted);
+        setIsOverdue(false);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [incident.openedAt, incident.status, contract?.supplierId, suppliers]);
+
+  if (incident.status === 'Resolvido') return null;
+
+  return (
+    <div className={cn(
+      "flex items-center gap-2 px-3 py-1.5 rounded-lg border font-mono text-sm",
+      isOverdue ? "bg-red-50 text-red-600 border-red-100" : "bg-slate-50 text-slate-600 border-slate-100"
+    )}>
+      <Clock size={14} className={cn(isOverdue && "animate-pulse")} />
+      <span>{timeLeft}</span>
+    </div>
+  );
+};
+
 export const Incidents: React.FC = () => {
   const { isManager } = useAuth();
   const [incidents, setIncidents] = useState<any[]>([]);
   const [contracts, setContracts] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -27,7 +76,7 @@ export const Incidents: React.FC = () => {
     system: '',
     priority: 'Médio',
     openedAt: new Date().toISOString().slice(0, 16),
-    status: 'Aberto',
+    status: 'Pendente',
     supplierContact: ''
   });
 
@@ -49,9 +98,17 @@ export const Incidents: React.FC = () => {
       }
     );
 
+    const suppliersUnsubscribe = onSnapshot(
+      collection(db, 'suppliers'),
+      (snapshot) => {
+        setSuppliers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    );
+
     return () => {
       unsubscribe();
       contractsUnsubscribe();
+      suppliersUnsubscribe();
     };
   }, []);
 
@@ -81,7 +138,7 @@ export const Incidents: React.FC = () => {
         system: '',
         priority: 'Médio',
         openedAt: new Date().toISOString().slice(0, 16),
-        status: 'Aberto',
+        status: 'Pendente',
         supplierContact: ''
       });
     } catch (err) {
@@ -209,6 +266,13 @@ export const Incidents: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-4">
+                {incident.status !== 'Resolvido' && (
+                  <IncidentTimer 
+                    incident={incident} 
+                    contract={contracts.find(c => c.id === incident.contractId)}
+                    suppliers={suppliers}
+                  />
+                )}
                 {incident.slaResolutionStatus && (
                   <div className={cn(
                     "px-3 py-1 rounded-lg text-xs font-bold border",

@@ -25,7 +25,7 @@ export const Notifications: React.FC = () => {
     });
 
     // 2. Fetch live data for real-time SLA checking
-    const incidentsQuery = query(collection(db, 'incidents'), where('status', '==', 'Pendente'));
+    const incidentsQuery = query(collection(db, 'incidents'), where('status', '!=', 'Resolvido'));
     const contractsQuery = query(collection(db, 'contracts'));
     const suppliersQuery = query(collection(db, 'suppliers'));
 
