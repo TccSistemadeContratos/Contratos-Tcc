@@ -1,20 +1,39 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# FlowSign
 
-# Run and deploy your AI Studio app
+Plataforma de Gestão de Contratos de TI com monitoramento de SLA, dashboard executivo e controle de chamados/incidentes.
 
-This contains everything you need to run your app locally.
+## Stack
 
-View your app in AI Studio: https://ai.studio/apps/b1514879-9f50-449e-9f53-fd0fdfa5cb62
+- **Frontend:** React 19 + TypeScript
+- **Build:** Vite 6
+- **Estilo:** Tailwind CSS 4
+- **Gráficos:** Recharts
+- **Relatórios:** jsPDF + jspdf-autotable
+- **Backend:** Firebase (Authentication, Firestore, Storage)
 
-## Run Locally
+## Rodar localmente
 
-**Prerequisites:**  Node.js
+**Pré-requisitos:** Node.js
 
+1. Instalar dependências:
+   ```
+   npm install
+   ```
+2. Rodar em modo desenvolvimento (porta 3000):
+   ```
+   npm run dev
+   ```
+3. Build de produção:
+   ```
+   npm run build
+   ```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Configuração
+
+A configuração do Firebase fica em `src/firebase-applet-config.json`. As regras de segurança do banco estão em `firestore.rules`.
+
+Não são necessárias variáveis de ambiente para rodar ou publicar o projeto.
+
+## Deploy
+
+O deploy é automático na **Vercel**: cada `push` na branch `main` publica a nova versão.
