@@ -34,12 +34,20 @@ export interface UserProfile {
   createdAt: string;
 }
 
+export type PaymentStatus = 'paid' | 'unpaid';
+
 export interface Company {
   id: string;
   name: string;
   cnpj?: string;
-  plan?: string;
-  status: Status;
+  ownerCpf?: string;      // CPF do responsável/dono
+  ownerPhone?: string;    // telefone do responsável
+  logoUrl?: string;       // logo em base64 (data URL) ou URL http(s)
+  plan?: string;          // rótulo opcional (sem efeito no acesso)
+  monthlyValue?: number;  // valor da mensalidade (BRL)
+  dueDay?: number;        // dia de vencimento (1-31)
+  paymentStatus?: PaymentStatus; // pago libera o acesso; não pago bloqueia
+  status: Status;         // suspensão manual do super admin
   createdAt: string;
   createdBy?: string;
 }

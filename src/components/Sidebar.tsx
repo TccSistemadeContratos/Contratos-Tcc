@@ -73,9 +73,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
                 Flow<span className="text-blue-400">Sign</span>
               </h1>
             </div>
-            <p className="mt-3 truncate text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-              {contextLabel}
-            </p>
+
+            {!isSuperAdmin && company?.logoUrl ? (
+              <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.04] p-2.5">
+                <div className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-white">
+                  <img src={company.logoUrl} alt={company.name} className="h-full w-full object-contain" />
+                </div>
+                <p className="truncate text-sm font-semibold text-white">{company.name}</p>
+              </div>
+            ) : (
+              <p className="mt-3 truncate text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+                {contextLabel}
+              </p>
+            )}
           </div>
 
           {/* User Info */}

@@ -56,25 +56,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Bootstrap do dono do FlowSign (superadmin)
+    // Bootstrap do dono do FlowSign (superadmin) — sempre autoritativo,
+    // mesmo que exista um perfil antigo dessa conta (ex.: role 'viewer').
     if (isSuperAdminEmail(firebaseUser.email)) {
       const ref = doc(db, 'users', firebaseUser.uid);
       const snap = await getDoc(ref);
-      let sa: UserProfile;
-      if (snap.exists()) {
-        sa = snap.data() as UserProfile;
-      } else {
-        sa = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          displayName: firebaseUser.displayName || 'Administrador FlowSign',
-          companyId: null,
-          role: 'superadmin',
-          status: 'active',
-          mustChangePassword: false,
-          createdAt: new Date().toISOString(),
-        };
-        await setDoc(ref, sa);
+      const existing = snap.exists() ? (snap.data() as Partial<UserProfile>) : null;
+      const sa: UserProfile = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || existing?.email || '',
+        displayName: existing?.displayName || firebaseUser.displayName || 'Administrador FlowSign',
+        companyId: null,
+        role: 'superadmin',
+        status: 'active',
+        mustChangePassword: false,
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      };
+      if (!existing || existing.role !== 'superadmin' || existing.companyId != null) {
+        await setDoc(ref, sa, { merge: true });
       }
       setProfile(sa);
       setCompany(null);
@@ -120,7 +119,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setCompany(comp);
 
-    if (!comp || comp.status !== 'active') {
+    // Bloqueia se a empresa foi suspensa OU se a mensalidade está em aberto.
+    const companyActive = !!comp && comp.status === 'active';
+    const companyPaid = !!comp && comp.paymentStatus !== 'unpaid';
+    if (!companyActive || !companyPaid) {
       setAccess('inactive');
       return;
     }
