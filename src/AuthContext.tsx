@@ -1,73 +1,175 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { isSuperAdminEmail, type UserProfile, type Company, type Role } from './lib/roles';
+
+// Estado do portão de acesso ao SaaS
+type AccessStatus =
+  | 'loading'
+  | 'ok'
+  | 'no-account'        // autenticou, mas não tem conta no FlowSign
+  | 'inactive'          // conta ou empresa desativada (assinatura inativa)
+  | 'must-change-password';
 
 interface AuthContextType {
   user: User | null;
-  profile: any | null;
+  profile: UserProfile | null;
+  company: Company | null;
   loading: boolean;
-  isAdmin: boolean;
+  access: AccessStatus;
+  role: Role | null;
+  companyId: string | null;
+  isSuperAdmin: boolean;
+  isCompanyAdmin: boolean;
   isManager: boolean;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
+  company: null,
   loading: true,
-  isAdmin: false,
+  access: 'loading',
+  role: null,
+  companyId: null,
+  isSuperAdmin: false,
+  isCompanyAdmin: false,
   isManager: false,
+  refresh: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [access, setAccess] = useState<AccessStatus>('loading');
   const [loading, setLoading] = useState(true);
+
+  // Carrega perfil + empresa e decide o acesso do usuário atual.
+  const loadContext = useCallback(async (firebaseUser: User | null) => {
+    if (!firebaseUser) {
+      setProfile(null);
+      setCompany(null);
+      setAccess('loading');
+      return;
+    }
+
+    // Bootstrap do dono do FlowSign (superadmin)
+    if (isSuperAdminEmail(firebaseUser.email)) {
+      const ref = doc(db, 'users', firebaseUser.uid);
+      const snap = await getDoc(ref);
+      let sa: UserProfile;
+      if (snap.exists()) {
+        sa = snap.data() as UserProfile;
+      } else {
+        sa = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          displayName: firebaseUser.displayName || 'Administrador FlowSign',
+          companyId: null,
+          role: 'superadmin',
+          status: 'active',
+          mustChangePassword: false,
+          createdAt: new Date().toISOString(),
+        };
+        await setDoc(ref, sa);
+      }
+      setProfile(sa);
+      setCompany(null);
+      setAccess('ok');
+      return;
+    }
+
+    // Usuários comuns: só entram se cadastrados (convite-only)
+    let userDoc;
+    try {
+      userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+    } catch (err) {
+      console.error('Erro ao carregar perfil:', err);
+      setProfile(null);
+      setCompany(null);
+      setAccess('no-account');
+      return;
+    }
+
+    if (!userDoc.exists()) {
+      setProfile(null);
+      setCompany(null);
+      setAccess('no-account');
+      return;
+    }
+
+    const prof = userDoc.data() as UserProfile;
+    setProfile(prof);
+
+    if (prof.status !== 'active') {
+      setCompany(null);
+      setAccess('inactive');
+      return;
+    }
+
+    // Valida a empresa (assinatura ativa)
+    let comp: Company | null = null;
+    if (prof.companyId) {
+      const compSnap = await getDoc(doc(db, 'companies', prof.companyId));
+      if (compSnap.exists()) {
+        comp = { id: compSnap.id, ...(compSnap.data() as Omit<Company, 'id'>) };
+      }
+    }
+    setCompany(comp);
+
+    if (!comp || comp.status !== 'active') {
+      setAccess('inactive');
+      return;
+    }
+
+    if (prof.mustChangePassword) {
+      setAccess('must-change-password');
+      return;
+    }
+
+    setAccess('ok');
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
       try {
-        setUser(firebaseUser);
-        if (firebaseUser) {
-          try {
-            const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-            if (userDoc.exists()) {
-              setProfile(userDoc.data());
-            } else {
-              // Create default profile for new users
-              const newProfile = {
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName,
-                role: 'viewer',
-                createdAt: new Date().toISOString(),
-              };
-              await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
-              setProfile(newProfile);
-            }
-          } catch (fsError) {
-            console.error('Erro ao acessar perfil no Firestore:', fsError);
-            // Mesmo com erro no Firestore, permitimos o login para que o usuário veja a interface
-            setProfile({ role: 'viewer', email: firebaseUser.email });
-          }
-        } else {
-          setProfile(null);
-        }
-      } catch (authError) {
-        console.error('Erro de autenticação:', authError);
+        await loadContext(firebaseUser);
       } finally {
         setLoading(false);
       }
     });
-
     return () => unsubscribe();
-  }, []);
+  }, [loadContext]);
 
-  const isAdmin = profile?.role === 'admin' || user?.email === 'projetocontratosfacul@gmail.com';
-  const isManager = isAdmin || profile?.role === 'manager';
+  const refresh = useCallback(async () => {
+    await loadContext(auth.currentUser);
+  }, [loadContext]);
+
+  const role = profile?.role ?? null;
+  const isSuperAdmin = role === 'superadmin';
+  const isCompanyAdmin = role === 'company_admin';
+  const isManager = isSuperAdmin || isCompanyAdmin;
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isManager }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        company,
+        loading,
+        access,
+        role,
+        companyId: profile?.companyId ?? null,
+        isSuperAdmin,
+        isCompanyAdmin,
+        isManager,
+        refresh,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

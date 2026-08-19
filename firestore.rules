@@ -2,97 +2,164 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Catch-all default deny
+
+    // Negação padrão
     match /{document=**} {
       allow read, write: if false;
     }
 
     // ===============================================================
-    // Helper Functions
+    // Helpers
     // ===============================================================
-    
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    function isEmailVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+
+    function userExists() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Admin Check: Verify against hardcoded email OR Firestore role
-    function isAdmin() {
-      let isSystemAdmin = request.auth.token.email == "projetocontratosfacul@gmail.com" && isEmailVerified();
-      let hasAdminDoc = exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      return isSystemAdmin || hasAdminDoc;
+    // IMPORTANTE: mantenha este e-mail igual ao SUPER_ADMIN_EMAILS em src/lib/roles.ts
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "projetocontratosfacul@gmail.com" ||
+        (userExists() && userData().role == 'superadmin')
+      );
     }
-    
+
+    function myRole() {
+      return userExists() ? userData().role : null;
+    }
+
+    function myCompany() {
+      return userExists() ? userData().companyId : null;
+    }
+
+    function isActive() {
+      return userExists() && userData().status == 'active';
+    }
+
+    function isCompanyAdmin() {
+      return isActive() && myRole() == 'company_admin';
+    }
+
+    // Gestor = super admin OU admin da empresa
     function isManager() {
-      let hasManagerDoc = exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-                          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
-      return isAdmin() || hasManagerDoc;
+      return isSuperAdmin() || isCompanyAdmin();
     }
 
-    // ID Validation helper
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    // Pertence à empresa cid (usuário ativo)
+    function sameCompany(cid) {
+      return isActive() && cid == myCompany();
+    }
+
+    // Pode escrever documento de negócio da empresa cid
+    function canWriteCompany(cid) {
+      return isSuperAdmin() || (isCompanyAdmin() && cid == myCompany());
+    }
+
+    // Pode ler documento de negócio da empresa cid
+    function canReadCompany(cid) {
+      return isSuperAdmin() || sameCompany(cid);
+    }
+
+    function companyDocFromContract(contractId) {
+      return get(/databases/$(database)/documents/contracts/$(contractId)).data.companyId;
     }
 
     // ===============================================================
-    // Collection Rules
+    // Empresas (tenants) — só o super admin gerencia
     // ===============================================================
+    match /companies/{companyId} {
+      allow read: if isSuperAdmin() || (isActive() && myCompany() == companyId);
+      allow create, update, delete: if isSuperAdmin();
+    }
 
+    // ===============================================================
+    // Usuários
+    // ===============================================================
     match /users/{uid} {
-      allow read: if isSignedIn();
-      allow create: if isOwner(uid) && 
-                      request.resource.data.role == 'viewer' && 
-                      request.resource.data.uid == uid &&
-                      request.resource.data.email == request.auth.token.email;
-      allow update: if isAdmin() || (isOwner(uid) && request.resource.data.role == resource.data.role);
+      allow read: if isSuperAdmin() ||
+                     (isActive() && resource.data.companyId == myCompany());
+
+      // Super admin cria qualquer conta; admin da empresa cria dentro da própria empresa
+      allow create: if isSuperAdmin() ||
+                       (isCompanyAdmin() &&
+                        request.resource.data.companyId == myCompany() &&
+                        request.resource.data.role in ['user', 'company_admin']);
+
+      // Super admin edita tudo; admin edita usuários da própria empresa;
+      // o próprio usuário só pode ajustar nome e a flag de troca de senha.
+      allow update: if isSuperAdmin() ||
+                       (isCompanyAdmin() && resource.data.companyId == myCompany()) ||
+                       (request.auth.uid == uid &&
+                        request.resource.data.diff(resource.data)
+                          .affectedKeys().hasOnly(['displayName', 'mustChangePassword']));
+
+      allow delete: if isSuperAdmin();
     }
 
-    match /suppliers/{supplierId} {
-      allow read: if isSignedIn();
-      allow create: if isManager() && 
-                      request.resource.data.keys().hasAll(['name', 'contactEmail', 'createdAt']) &&
-                      request.resource.data.name is string &&
-                      request.resource.data.name.size() > 0;
-      allow update: if isManager();
-      allow delete: if isAdmin();
+    // ===============================================================
+    // Fornecedores
+    // ===============================================================
+    match /suppliers/{id} {
+      allow read: if canReadCompany(resource.data.companyId);
+      allow create: if isManager() &&
+                       request.resource.data.companyId != null &&
+                       canWriteCompany(request.resource.data.companyId) &&
+                       request.resource.data.name is string &&
+                       request.resource.data.name.size() > 0;
+      allow update: if canWriteCompany(resource.data.companyId);
+      allow delete: if canWriteCompany(resource.data.companyId);
     }
 
+    // ===============================================================
+    // Contratos
+    // ===============================================================
     match /contracts/{contractId} {
-      allow read: if isSignedIn();
-      allow create: if isManager() && 
-                      request.resource.data.keys().hasAll(['contractNumber', 'name', 'supplierId', 'status', 'createdAt']) &&
-                      isValidId(request.resource.data.supplierId);
-      allow update: if isManager();
-      allow delete: if isAdmin();
-      
+      allow read: if canReadCompany(resource.data.companyId);
+      allow create: if isManager() &&
+                       request.resource.data.companyId != null &&
+                       canWriteCompany(request.resource.data.companyId);
+      allow update: if canWriteCompany(resource.data.companyId);
+      allow delete: if canWriteCompany(resource.data.companyId);
+
       match /slas/{slaId} {
-        allow read: if isSignedIn();
-        allow write: if isManager();
+        allow read: if canReadCompany(companyDocFromContract(contractId));
+        allow write: if canWriteCompany(companyDocFromContract(contractId));
       }
     }
 
-    match /incidents/{incidentId} {
-      allow read: if isSignedIn();
-      allow create: if isManager() && 
-                      request.resource.data.keys().hasAll(['contractId', 'system', 'priority', 'status', 'openedAt']) &&
-                      isValidId(request.resource.data.contractId);
-      allow update: if isManager();
-      allow delete: if isAdmin();
+    // ===============================================================
+    // Chamados / Incidentes
+    // ===============================================================
+    match /incidents/{id} {
+      allow read: if canReadCompany(resource.data.companyId);
+      allow create: if isManager() &&
+                       request.resource.data.companyId != null &&
+                       canWriteCompany(request.resource.data.companyId);
+      allow update: if canWriteCompany(resource.data.companyId);
+      allow delete: if canWriteCompany(resource.data.companyId);
     }
 
-    match /notifications/{notificationId} {
-      allow read: if isSignedIn();
-      allow update: if isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow write: if isAdmin();
+    // ===============================================================
+    // Notificações
+    // ===============================================================
+    match /notifications/{id} {
+      allow read: if canReadCompany(resource.data.companyId);
+      allow create: if isManager() &&
+                       request.resource.data.companyId != null &&
+                       canWriteCompany(request.resource.data.companyId);
+      // Marcar como lida (qualquer membro ativo da empresa)
+      allow update: if sameCompany(resource.data.companyId) &&
+                       request.resource.data.diff(resource.data)
+                         .affectedKeys().hasOnly(['read']);
+      allow delete: if canWriteCompany(resource.data.companyId);
     }
   }
 }

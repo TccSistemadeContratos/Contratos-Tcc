@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  doc, 
+import {
+  collection,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  doc,
   deleteDoc,
   query,
-  orderBy
+  where
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
@@ -16,7 +16,7 @@ import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Edit, Upload, X, 
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 
 export const Contracts: React.FC = () => {
-  const { isManager } = useAuth();
+  const { isManager, companyId } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,18 +41,21 @@ export const Contracts: React.FC = () => {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'contracts'), orderBy('createdAt', 'desc'));
+    if (!companyId) return;
+    const q = query(collection(db, 'contracts'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setContracts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+        rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        setContracts(rows);
         setLoading(false);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'contracts')
     );
 
     const suppliersUnsubscribe = onSnapshot(
-      collection(db, 'suppliers'),
+      query(collection(db, 'suppliers'), where('companyId', '==', companyId)),
       (snapshot) => {
         setSuppliers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
       }
@@ -62,7 +65,7 @@ export const Contracts: React.FC = () => {
       unsubscribe();
       suppliersUnsubscribe();
     };
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     if (showModal && contracts.length >= 0) {
@@ -102,6 +105,7 @@ export const Contracts: React.FC = () => {
       const supplier = suppliers.find(s => s.id === formData.supplierId);
       await addDoc(collection(db, 'contracts'), {
         ...formData,
+        companyId,
         supplierName: supplier?.name || '',
         createdAt: new Date().toISOString(),
         value: Number(formData.value),

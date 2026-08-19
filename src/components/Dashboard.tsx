@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  where,
-  orderBy,
-  limit
+import {
+  collection,
+  onSnapshot,
+  query,
+  where
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
+import { useAuth } from '../AuthContext';
 import { 
   BarChart, 
   Bar, 
@@ -33,6 +32,7 @@ import {
 import { formatCurrency, cn } from '../lib/utils';
 
 export const Dashboard: React.FC = () => {
+  const { companyId } = useAuth();
   const [stats, setStats] = useState({
     activeContracts: 0,
     expiringSoon: 0,
@@ -44,8 +44,9 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!companyId) return;
     const contractsUnsubscribe = onSnapshot(
-      collection(db, 'contracts'),
+      query(collection(db, 'contracts'), where('companyId', '==', companyId)),
       (snapshot) => {
         const docs = snapshot.docs.map(d => d.data());
         const active = docs.filter(d => d.status === 'Ativo').length;
@@ -64,7 +65,7 @@ export const Dashboard: React.FC = () => {
     );
 
     const suppliersUnsubscribe = onSnapshot(
-      collection(db, 'suppliers'),
+      query(collection(db, 'suppliers'), where('companyId', '==', companyId)),
       (snapshot) => {
         const data = snapshot.docs.map(d => ({
           name: d.data().name,
@@ -79,7 +80,7 @@ export const Dashboard: React.FC = () => {
     );
 
     const incidentsUnsubscribe = onSnapshot(
-      collection(db, 'incidents'),
+      query(collection(db, 'incidents'), where('companyId', '==', companyId)),
       (snapshot) => {
         const docs = snapshot.docs.map(d => d.data());
         const violations = docs.filter(d => d.slaResponseStatus === 'Violado' || d.slaResolutionStatus === 'Violado').length;
@@ -101,20 +102,20 @@ export const Dashboard: React.FC = () => {
       suppliersUnsubscribe();
       incidentsUnsubscribe();
     };
-  }, []);
+  }, [companyId]);
 
-  const COLORS = ['#ef4444', '#f97316', '#eab308', '#3b82f6'];
+  const COLORS = ['#ef4444', '#f97316', '#eab308', '#4353e6'];
 
   const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
-    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+    <div className="group bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between mb-4">
-        <div className={cn("p-3 rounded-xl", color)}>
+        <div className={cn("p-3 rounded-xl transition-transform duration-200 group-hover:scale-105", color)}>
           <Icon size={24} className="text-white" />
         </div>
         {subValue && <span className="text-xs font-medium text-slate-500">{subValue}</span>}
       </div>
       <h3 className="text-slate-500 text-sm font-medium">{title}</h3>
-      <p className="text-3xl font-bold text-slate-900 mt-1">{value}</p>
+      <p className="font-display text-3xl font-bold text-slate-900 mt-1">{value}</p>
     </div>
   );
 
@@ -170,7 +171,7 @@ export const Dashboard: React.FC = () => {
                   cursor={{fill: '#f8fafc'}}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
-                <Bar dataKey="sla" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
+                <Bar dataKey="sla" fill="#4353e6" radius={[0, 4, 4, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </div>

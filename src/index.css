@@ -1,1 +1,129 @@
 @import "tailwindcss";
+
+/* ==========================================================================
+   FlowSign — design tokens
+   Refina o tema padrão do Tailwind para dar identidade à plataforma inteira:
+   tipografia real, um azul-índigo elétrico próprio (no lugar do blue-600
+   genérico), papel mais frio e sombras suaves em camadas.
+   ========================================================================== */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Marca — azul-índigo elétrico (substitui a escala "blue" padrão) */
+  --color-blue-50: #eef1ff;
+  --color-blue-100: #dfe4ff;
+  --color-blue-200: #c4ccff;
+  --color-blue-300: #9fabff;
+  --color-blue-400: #7784ff;
+  --color-blue-500: #5666f6;
+  --color-blue-600: #4353e6;
+  --color-blue-700: #3341bf;
+  --color-blue-800: #2a3596;
+  --color-blue-900: #242d78;
+
+  /* Aliases semânticos da marca (para código novo) */
+  --color-brand: #4353e6;
+  --color-brand-strong: #3341bf;
+  --color-flow: #22d3ee;
+  --color-ink: #0b1020;
+  --color-ink-2: #121a33;
+
+  /* Papel um tom mais frio e calmo que o slate-50 padrão */
+  --color-slate-50: #f5f7fb;
+
+  /* Sombras suaves em camadas — tira o ar de "card padrão" */
+  --shadow-sm: 0 1px 2px rgb(11 16 32 / 0.04), 0 2px 6px rgb(11 16 32 / 0.05);
+  --shadow-md: 0 4px 10px -2px rgb(11 16 32 / 0.06), 0 8px 24px -8px rgb(11 16 32 / 0.10);
+  --shadow-lg: 0 12px 28px -6px rgb(11 16 32 / 0.12), 0 24px 48px -16px rgb(11 16 32 / 0.14);
+  --shadow-xl: 0 24px 60px -16px rgb(11 16 32 / 0.28);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    color: #0b1020;
+    background-color: var(--color-slate-50);
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-brand) 22%, transparent);
+    color: #0b1020;
+  }
+
+  /* Foco visível e consistente em toda a plataforma */
+  :where(a, button, input, select, textarea):focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+/* ==========================================================================
+   Tela de login — atmosfera e movimento
+   ========================================================================== */
+@layer components {
+  /* Fundo "ink" com brilho de marca ao fundo do painel esquerdo */
+  .fs-aurora {
+    background:
+      radial-gradient(120% 90% at 12% 8%, rgb(67 83 230 / 0.35), transparent 55%),
+      radial-gradient(90% 80% at 88% 92%, rgb(34 211 238 / 0.16), transparent 50%),
+      linear-gradient(160deg, #0b1020 0%, #101733 55%, #0b1020 100%);
+  }
+
+  /* Malha sutil de "documento/planilha" sobre o painel escuro */
+  .fs-grid {
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(120% 100% at 50% 40%, #000 40%, transparent 100%);
+  }
+}
+
+/* Traço da assinatura que se desenha sozinho */
+.fs-sign-path {
+  stroke-dasharray: 520;
+  stroke-dashoffset: 520;
+  animation: fs-draw 2.2s cubic-bezier(0.65, 0, 0.35, 1) 0.5s forwards;
+}
+
+/* Pulso de SLA percorrendo a linha (monitoramento em tempo real) */
+.fs-pulse-dash {
+  stroke-dasharray: 8 220;
+  animation: fs-pulse 3.4s linear infinite;
+}
+
+.fs-blink {
+  animation: fs-blink 2s ease-in-out infinite;
+}
+
+@keyframes fs-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes fs-pulse {
+  from { stroke-dashoffset: 228; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes fs-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-sign-path { animation: none; stroke-dashoffset: 0; }
+  .fs-pulse-dash { animation: none; }
+  .fs-blink { animation: none; }
+}

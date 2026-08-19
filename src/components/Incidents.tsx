@@ -64,7 +64,7 @@ const IncidentTimer: React.FC<{ incident: any, contract: any, suppliers: any[] }
 };
 
 export const Incidents: React.FC = () => {
-  const { isManager } = useAuth();
+  const { isManager, companyId } = useAuth();
   const [incidents, setIncidents] = useState<any[]>([]);
   const [contracts, setContracts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -81,25 +81,28 @@ export const Incidents: React.FC = () => {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'incidents'), orderBy('openedAt', 'desc'));
+    if (!companyId) return;
+    const q = query(collection(db, 'incidents'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setIncidents(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+        rows.sort((a, b) => (b.openedAt || '').localeCompare(a.openedAt || ''));
+        setIncidents(rows);
         setLoading(false);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'incidents')
     );
 
     const contractsUnsubscribe = onSnapshot(
-      collection(db, 'contracts'),
+      query(collection(db, 'contracts'), where('companyId', '==', companyId)),
       (snapshot) => {
         setContracts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
       }
     );
 
     const suppliersUnsubscribe = onSnapshot(
-      collection(db, 'suppliers'),
+      query(collection(db, 'suppliers'), where('companyId', '==', companyId)),
       (snapshot) => {
         setSuppliers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
       }
@@ -110,7 +113,7 @@ export const Incidents: React.FC = () => {
       contractsUnsubscribe();
       suppliersUnsubscribe();
     };
-  }, []);
+  }, [companyId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,6 +123,7 @@ export const Incidents: React.FC = () => {
       
       await addDoc(collection(db, 'incidents'), {
         ...formData,
+        companyId,
         openedAt: new Date(formData.openedAt).toISOString(),
         createdAt: new Date().toISOString()
       });

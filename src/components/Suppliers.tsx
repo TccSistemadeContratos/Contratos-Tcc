@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  addDoc, 
+import {
+  collection,
+  onSnapshot,
+  addDoc,
   query,
-  orderBy
+  where
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -12,7 +12,7 @@ import { Plus, Search, Users, Star, AlertTriangle, TrendingUp } from 'lucide-rea
 import { cn } from '../lib/utils';
 
 export const Suppliers: React.FC = () => {
-  const { isManager } = useAuth();
+  const { isManager, companyId } = useAuth();
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,18 +27,21 @@ export const Suppliers: React.FC = () => {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'suppliers'), orderBy('name', 'asc'));
+    if (!companyId) return;
+    const q = query(collection(db, 'suppliers'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setSuppliers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+        rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setSuppliers(rows);
         setLoading(false);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'suppliers')
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [companyId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +49,7 @@ export const Suppliers: React.FC = () => {
     try {
       await addDoc(collection(db, 'suppliers'), {
         ...formData,
+        companyId,
         createdAt: new Date().toISOString()
       });
       setShowModal(false);
