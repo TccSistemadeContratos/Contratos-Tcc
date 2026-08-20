@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
-import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Edit, Upload, X, Loader2, PenLine, Copy, CheckCheck } from 'lucide-react';
+import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Upload, X, Loader2, PenLine, Copy, CheckCheck } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 import { SearchableSelect } from './ui/SearchableSelect';
 import { NumericInput } from './ui/NumericInput';
@@ -86,7 +86,7 @@ export const Contracts: React.FC = () => {
     value: '',
     internalOwner: '',
     description: '',
-    status: 'Ativo'
+    status: 'Rascunho'
   });
 
   useEffect(() => {
@@ -189,7 +189,7 @@ export const Contracts: React.FC = () => {
         value: '',
         internalOwner: '',
         description: '',
-        status: 'Ativo'
+        status: 'Rascunho'
       });
     } catch (err) {
       setFormError('Não foi possível salvar o contrato. Tente novamente.');
@@ -288,6 +288,7 @@ export const Contracts: React.FC = () => {
     switch (status) {
       case 'Ativo': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'Pendente': return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'Rascunho': return 'bg-slate-100 text-slate-600 border-slate-200';
       case 'Vencido': return 'bg-red-100 text-red-700 border-red-200';
       case 'Em renovação': return 'bg-blue-100 text-blue-700 border-blue-200';
       default: return 'bg-slate-100 text-slate-700 border-slate-200';
@@ -377,7 +378,7 @@ export const Contracts: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2">
                       {contract.hasPdf && (
                         <button
                           type="button"
@@ -388,26 +389,27 @@ export const Contracts: React.FC = () => {
                           <ExternalLink size={18} />
                         </button>
                       )}
-                      {isManager && contract.status !== 'Ativo' && (
+                      {isManager && (
                         <button
                           type="button"
                           onClick={() => handleSendSignature(contract)}
                           disabled={signingId === contract.id}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
                           title="Enviar para assinatura"
                         >
-                          {signingId === contract.id ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
+                          {signingId === contract.id ? <Loader2 size={16} className="animate-spin" /> : <PenLine size={16} />}
+                          Assinatura
                         </button>
                       )}
-                      <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
-                        <Edit size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(contract.id)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {isManager && (
+                        <button
+                          onClick={() => handleDelete(contract.id)}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title="Excluir"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
