@@ -8,9 +8,9 @@ import {
 } from 'recharts';
 import {
   FileText, AlertTriangle, Users, TrendingUp, Clock, ShieldCheck,
-  ShieldAlert, PenLine, CalendarClock,
+  ShieldAlert, PenLine, CalendarClock, X,
 } from 'lucide-react';
-import { formatCurrency, formatDateOnly, cn } from '../lib/utils';
+import { formatCurrency, formatDate, formatDateOnly, cn } from '../lib/utils';
 
 export const Dashboard: React.FC = () => {
   const { companyId } = useAuth();
@@ -19,6 +19,7 @@ export const Dashboard: React.FC = () => {
   const [incidents, setIncidents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
+  const [detailKey, setDetailKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) return;
@@ -74,16 +75,20 @@ export const Dashboard: React.FC = () => {
 
     return {
       active: active.length,
+      activeList: active,
       pendingSig: pendingSig.length,
+      pendingList: pendingSig,
       expiring,
       openCount: open.length,
       within: within.length,
+      withinList: within,
       breached,
       resolvedViolations,
       avgSla,
       topSuppliers,
       byPriority,
       totalSuppliers: suppliers.length,
+      suppliersList: suppliers,
       withDeadline: withDeadline.sort((a, b) => a.deadline - b.deadline),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,18 +107,18 @@ export const Dashboard: React.FC = () => {
 
       {/* KPIs principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Stat title="Contratos Ativos" value={m.active} icon={FileText} color="bg-blue-600" />
-        <Stat title="Vencendo (30 dias)" value={m.expiring.length} icon={Clock} color="bg-orange-500" />
-        <Stat title="SLA Médio Global" value={`${m.avgSla}%`} icon={TrendingUp} color="bg-emerald-500" />
-        <Stat title="Chamados Abertos" value={m.openCount} icon={AlertTriangle} color="bg-slate-700" />
+        <Stat title="Contratos Ativos" value={m.active} icon={FileText} color="bg-blue-600" onClick={() => setDetailKey('active')} />
+        <Stat title="Vencendo (30 dias)" value={m.expiring.length} icon={Clock} color="bg-orange-500" onClick={() => setDetailKey('expiring')} />
+        <Stat title="SLA Médio Global" value={`${m.avgSla}%`} icon={TrendingUp} color="bg-emerald-500" onClick={() => setDetailKey('suppliers')} />
+        <Stat title="Chamados Abertos" value={m.openCount} icon={AlertTriangle} color="bg-slate-700" onClick={() => setDetailKey('open')} />
       </div>
 
       {/* Faixa de SLA / assinatura */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Mini title="Dentro do SLA" value={m.within} icon={ShieldCheck} tone="emerald" />
-        <Mini title="SLA Estourado" value={m.breached.length} icon={ShieldAlert} tone="red" pulse={m.breached.length > 0} />
-        <Mini title="Aguardando assinatura" value={m.pendingSig} icon={PenLine} tone="amber" />
-        <Mini title="Fornecedores" value={m.totalSuppliers} icon={Users} tone="slate" />
+        <Mini title="Dentro do SLA" value={m.within} icon={ShieldCheck} tone="emerald" onClick={() => setDetailKey('within')} />
+        <Mini title="SLA Estourado" value={m.breached.length} icon={ShieldAlert} tone="red" pulse={m.breached.length > 0} onClick={() => setDetailKey('breached')} />
+        <Mini title="Aguardando assinatura" value={m.pendingSig} icon={PenLine} tone="amber" onClick={() => setDetailKey('pending')} />
+        <Mini title="Fornecedores" value={m.totalSuppliers} icon={Users} tone="slate" onClick={() => setDetailKey('suppliers')} />
       </div>
 
       {/* Chamados estourados (urgente) */}
@@ -219,20 +224,102 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {detailKey && (
+        <DetailModal
+          onClose={() => setDetailKey(null)}
+          data={{
+            active: { title: 'Contratos ativos', kind: 'contracts', items: m.activeList },
+            expiring: { title: 'Contratos vencendo (30 dias)', kind: 'contracts', items: m.expiring },
+            pending: { title: 'Aguardando assinatura', kind: 'contracts', items: m.pendingList },
+            open: { title: 'Chamados em aberto', kind: 'incidents', items: m.withDeadline },
+            within: { title: 'Chamados dentro do SLA', kind: 'incidents', items: m.withinList },
+            breached: { title: 'Chamados com SLA estourado', kind: 'incidents', items: m.breached },
+            suppliers: { title: 'Fornecedores', kind: 'suppliers', items: m.suppliersList },
+          }[detailKey]}
+        />
+      )}
     </div>
   );
 };
 
-const Stat = ({ title, value, icon: Icon, color }: any) => (
-  <div className="group bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
+const DetailModal: React.FC<{ onClose: () => void; data?: { title: string; kind: string; items: any[] } }> = ({ onClose, data }) => {
+  if (!data) return null;
+  const { title, kind, items } = data;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-100 p-5">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+            <p className="text-xs text-slate-400">{items.length} {items.length === 1 ? 'item' : 'itens'}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={22} /></button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto p-4">
+          {items.length === 0 && <p className="py-10 text-center text-sm text-slate-400">Nada por aqui.</p>}
+          <div className="space-y-2">
+            {kind === 'contracts' && items.map((c) => (
+              <div key={c.id} className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-900">{c.name} <span className="text-xs font-normal text-slate-400">#{c.contractNumber}</span></p>
+                  <p className="truncate text-xs text-slate-500">{c.supplierName || '—'} · {c.internalOwner ? `Resp.: ${c.internalOwner} · ` : ''}{formatCurrency(c.value || 0)}</p>
+                  <p className="text-xs text-slate-400">Vigência: {formatDateOnly(c.startDate)} – {formatDateOnly(c.endDate)}</p>
+                </div>
+                <span className={cn('shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                  c.status === 'Ativo' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : c.status === 'Pendente' ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-slate-200 bg-slate-50 text-slate-600')}>{c.status}</span>
+              </div>
+            ))}
+
+            {kind === 'incidents' && items.map((i) => (
+              <div key={i.id} className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-900">{i.system}</p>
+                  <p className="truncate text-xs text-slate-500">Contrato: {i.contractName || '—'} · Prioridade: {i.priority}</p>
+                  <p className="text-xs text-slate-400">Aberto em: {formatDate(i.openedAt)}</p>
+                </div>
+                <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold',
+                  i.breached ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700')}>
+                  {i.breached ? 'Estourado' : 'No prazo'}
+                </span>
+              </div>
+            ))}
+
+            {kind === 'suppliers' && items.map((s) => (
+              <div key={s.id} className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-900">{s.name}</p>
+                  <p className="truncate text-xs text-slate-500">{s.contactEmail || '—'} · Meta {s.slaLimit || 2}h</p>
+                </div>
+                <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-bold',
+                  (s.slaScore || 0) >= 95 ? 'bg-emerald-100 text-emerald-700'
+                  : (s.slaScore || 0) >= 90 ? 'bg-amber-100 text-amber-700'
+                  : 'bg-red-100 text-red-700')}>{s.slaScore ?? 100}% SLA</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Stat = ({ title, value, icon: Icon, color, onClick }: any) => (
+  <button
+    onClick={onClick}
+    className="group w-full text-left bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+  >
     <div className="flex items-center justify-between mb-4">
       <div className={cn('p-3 rounded-xl transition-transform duration-200 group-hover:scale-105', color)}>
         <Icon size={24} className="text-white" />
       </div>
+      <span className="text-xs font-medium text-slate-300 opacity-0 transition group-hover:opacity-100">ver detalhes →</span>
     </div>
     <h3 className="text-slate-500 text-sm font-medium">{title}</h3>
     <p className="font-display text-3xl font-bold text-slate-900 mt-1">{value}</p>
-  </div>
+  </button>
 );
 
 const toneMap: Record<string, string> = {
@@ -242,8 +329,11 @@ const toneMap: Record<string, string> = {
   slate: 'bg-slate-100 text-slate-600',
 };
 
-const Mini = ({ title, value, icon: Icon, tone, pulse }: any) => (
-  <div className="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+const Mini = ({ title, value, icon: Icon, tone, pulse, onClick }: any) => (
+  <button
+    onClick={onClick}
+    className="flex w-full items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+  >
     <div className={cn('grid h-11 w-11 place-items-center rounded-xl', toneMap[tone], pulse && 'animate-pulse')}>
       <Icon size={22} />
     </div>
@@ -251,5 +341,5 @@ const Mini = ({ title, value, icon: Icon, tone, pulse }: any) => (
       <p className="text-2xl font-bold text-slate-900">{value}</p>
       <p className="text-xs font-medium text-slate-500">{title}</p>
     </div>
-  </div>
+  </button>
 );
