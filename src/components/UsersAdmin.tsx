@@ -103,8 +103,12 @@ export const UsersAdmin: React.FC = () => {
                 <tr key={u.uid} className="transition-colors hover:bg-slate-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-9 w-9 place-items-center rounded-full bg-blue-50 text-sm font-semibold text-blue-600">
-                        {(u.displayName || u.email || '?').charAt(0).toUpperCase()}
+                      <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-blue-50 text-sm font-semibold text-blue-600">
+                        {u.photoUrl ? (
+                          <img src={u.photoUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          (u.displayName || u.email || '?').charAt(0).toUpperCase()
+                        )}
                       </div>
                       <div>
                         <p className="font-semibold text-slate-900">

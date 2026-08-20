@@ -99,7 +99,7 @@ service cloud.firestore {
                        (isCompanyAdmin() && resource.data.companyId == myCompany()) ||
                        (request.auth.uid == uid &&
                         request.resource.data.diff(resource.data)
-                          .affectedKeys().hasOnly(['displayName', 'mustChangePassword']));
+                          .affectedKeys().hasOnly(['displayName', 'mustChangePassword', 'photoUrl']));
 
       allow delete: if isSuperAdmin();
     }
@@ -133,6 +133,18 @@ service cloud.firestore {
         allow read: if canReadCompany(companyDocFromContract(contractId));
         allow write: if canWriteCompany(companyDocFromContract(contractId));
       }
+    }
+
+    // ===============================================================
+    // Arquivos de contrato (PDF em base64) — doc separado por contrato
+    // ===============================================================
+    match /contractFiles/{id} {
+      allow read: if canReadCompany(resource.data.companyId);
+      allow create: if isManager() &&
+                       request.resource.data.companyId != null &&
+                       canWriteCompany(request.resource.data.companyId);
+      allow update: if canWriteCompany(resource.data.companyId);
+      allow delete: if canWriteCompany(resource.data.companyId);
     }
 
     // ===============================================================

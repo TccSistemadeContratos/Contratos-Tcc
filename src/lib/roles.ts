@@ -31,6 +31,7 @@ export interface UserProfile {
   role: Role;
   status: Status;
   mustChangePassword: boolean;
+  photoUrl?: string;
   createdAt: string;
 }
 

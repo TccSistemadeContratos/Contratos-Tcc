@@ -11,12 +11,14 @@ import {
   FileSignature,
   Building2,
   UserCog,
-  BarChart3
+  BarChart3,
+  Camera
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { cn } from '../lib/utils';
+import { ProfilePhoto } from './ProfilePhoto';
 
 interface SidebarProps {
   activeTab: string;
@@ -26,6 +28,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const { isSuperAdmin, isCompanyAdmin, profile, company } = useAuth();
   const [isOpen, setIsOpen] = React.useState(false);
+  const [showPhoto, setShowPhoto] = React.useState(false);
 
   const navItems = isSuperAdmin
     ? [{ id: 'companies', label: 'Empresas', icon: Building2 }]
@@ -75,11 +78,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             </div>
 
             {!isSuperAdmin && company?.logoUrl ? (
-              <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.04] p-2.5">
-                <div className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-white">
-                  <img src={company.logoUrl} alt={company.name} className="h-full w-full object-contain" />
+              <div className="mt-4 rounded-xl border border-white/5 bg-white/[0.04] p-3">
+                <div className="grid h-16 w-full place-items-center overflow-hidden rounded-lg bg-white p-2">
+                  <img src={company.logoUrl} alt={company.name} className="max-h-full max-w-full object-contain" />
                 </div>
-                <p className="truncate text-sm font-semibold text-white">{company.name}</p>
+                <p className="mt-2 truncate text-center text-sm font-semibold text-white">{company.name}</p>
               </div>
             ) : (
               <p className="mt-3 truncate text-[11px] font-semibold uppercase tracking-widest text-slate-400">
@@ -89,15 +92,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           </div>
 
           {/* User Info */}
-          <div className="mx-4 mb-2 flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.04] px-3 py-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-600/25 text-sm font-semibold text-blue-200">
-              {(profile?.displayName || profile?.email || '?').charAt(0).toUpperCase()}
+          <button
+            onClick={() => setShowPhoto(true)}
+            className="group mx-4 mb-2 flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.04] px-3 py-3 text-left transition hover:bg-white/[0.08]"
+            title="Alterar foto de perfil"
+          >
+            <div className="relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-blue-600/25 text-sm font-semibold text-blue-200">
+              {profile?.photoUrl ? (
+                <img src={profile.photoUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                (profile?.displayName || profile?.email || '?').charAt(0).toUpperCase()
+              )}
+              <span className="absolute inset-0 hidden place-items-center bg-black/40 group-hover:grid">
+                <Camera size={14} className="text-white" />
+              </span>
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-white">{profile?.displayName || profile?.email}</p>
               <p className="text-xs text-slate-400">{roleName(profile?.role)}</p>
             </div>
-          </div>
+          </button>
 
           {/* Nav */}
           <nav className="flex-1 px-4 py-4 space-y-1">
@@ -142,11 +156,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
 
       {/* Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-30 lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
+
+      {showPhoto && <ProfilePhoto onClose={() => setShowPhoto(false)} />}
     </>
   );
 };
