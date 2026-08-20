@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  addDoc, 
+import {
+  collection,
+  onSnapshot,
+  addDoc,
   query,
-  orderBy
+  where
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Plus, Search, Users, Star, AlertTriangle, TrendingUp } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { NumericInput } from './ui/NumericInput';
 
 export const Suppliers: React.FC = () => {
-  const { isManager } = useAuth();
+  const { isManager, companyId } = useAuth();
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -20,25 +21,28 @@ export const Suppliers: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     contactEmail: '',
-    slaLimit: 2,
+    slaLimit: '',
     slaScore: 100,
     totalIncidents: 0,
     violations: 0
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'suppliers'), orderBy('name', 'asc'));
+    if (!companyId) return;
+    const q = query(collection(db, 'suppliers'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setSuppliers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+        rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setSuppliers(rows);
         setLoading(false);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'suppliers')
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [companyId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,10 +50,12 @@ export const Suppliers: React.FC = () => {
     try {
       await addDoc(collection(db, 'suppliers'), {
         ...formData,
+        slaLimit: Number(formData.slaLimit) || 2,
+        companyId,
         createdAt: new Date().toISOString()
       });
       setShowModal(false);
-      setFormData({ name: '', contactEmail: '', slaLimit: 2, slaScore: 100, totalIncidents: 0, violations: 0 });
+      setFormData({ name: '', contactEmail: '', slaLimit: '', slaScore: 100, totalIncidents: 0, violations: 0 });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'suppliers');
     } finally {
@@ -157,13 +163,10 @@ export const Suppliers: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Meta de SLA (Horas de atendimento)</label>
                 <div className="flex items-center gap-2">
-                  <input 
-                    type="number"
-                    min="1"
-                    required
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  <NumericInput
+                    placeholder="2"
                     value={formData.slaLimit}
-                    onChange={e => setFormData({...formData, slaLimit: parseInt(e.target.value)})}
+                    onChange={(v) => setFormData({ ...formData, slaLimit: v })}
                     disabled={saving}
                   />
                   <span className="text-slate-500 font-medium">horas</span>

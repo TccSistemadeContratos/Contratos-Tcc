@@ -1,33 +1,37 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
+import {
+  collection,
+  onSnapshot,
+  query,
   where,
-  orderBy,
   updateDoc,
   doc
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
+import { useAuth } from '../AuthContext';
 import { Bell, AlertTriangle, Clock, ShieldAlert, Check, AlertCircle } from 'lucide-react';
 import { formatDate, cn } from '../lib/utils';
 
 export const Notifications: React.FC = () => {
+  const { companyId } = useAuth();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [activeViolations, setActiveViolations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Fetch persistent notifications
-    const notifQuery = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'));
+    if (!companyId) return;
+    // 1. Notificações persistentes da empresa
+    const notifQuery = query(collection(db, 'notifications'), where('companyId', '==', companyId));
     const unsubscribeNotifs = onSnapshot(notifQuery, (snapshot) => {
-      setNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      setNotifications(rows);
     });
 
-    // 2. Fetch live data for real-time SLA checking
-    const incidentsQuery = query(collection(db, 'incidents'), where('status', '!=', 'Resolvido'));
-    const contractsQuery = query(collection(db, 'contracts'));
-    const suppliersQuery = query(collection(db, 'suppliers'));
+    // 2. Dados ao vivo da empresa para checagem de SLA em tempo real
+    const incidentsQuery = query(collection(db, 'incidents'), where('companyId', '==', companyId));
+    const contractsQuery = query(collection(db, 'contracts'), where('companyId', '==', companyId));
+    const suppliersQuery = query(collection(db, 'suppliers'), where('companyId', '==', companyId));
 
     let currentIncidents: any[] = [];
     let currentContracts: any[] = [];
@@ -38,6 +42,7 @@ export const Notifications: React.FC = () => {
       const now = new Date().getTime();
 
       currentIncidents.forEach(incident => {
+        if (incident.status === 'Resolvido') return;
         const contract = currentContracts.find(c => c.id === incident.contractId);
         if (!contract) return;
 
@@ -87,7 +92,7 @@ export const Notifications: React.FC = () => {
       unsubscribeContracts();
       unsubscribeSuppliers();
     };
-  }, []);
+  }, [companyId]);
 
   const markAsRead = async (id: string) => {
     try {

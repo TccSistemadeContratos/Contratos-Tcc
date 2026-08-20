@@ -1,22 +1,67 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  doc, 
+import {
+  collection,
+  onSnapshot,
+  addDoc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  doc,
   deleteDoc,
   query,
-  orderBy
+  where
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
-import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Edit, Upload, X, Loader2 } from 'lucide-react';
+import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Edit, Upload, X, Loader2, PenLine, Copy, CheckCheck } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { SearchableSelect } from './ui/SearchableSelect';
+import { NumericInput } from './ui/NumericInput';
+import { CONTRACT_TYPES, AREAS_BY_TYPE } from '../lib/contractTypes';
+import { generateToken, buildSignUrl, sendEmail, supplierInviteEmail } from '../lib/signatures';
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+// Soma meses a uma data (yyyy-mm-dd) e devolve no mesmo formato.
+function addMonths(dateStr: string, months: number): string {
+  const base = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  base.setMonth(base.getMonth() + months);
+  return base.toISOString().slice(0, 10);
+}
+
+// Abre um PDF em base64 (data URL) numa nova aba, via Blob (evita bloqueio de data: URL).
+function openBase64Pdf(dataUrl: string) {
+  try {
+    const b64 = dataUrl.split(',')[1];
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch {
+    window.open(dataUrl, '_blank');
+  }
+}
+
+const DATE_PRESETS = [
+  { label: '6 meses', months: 6 },
+  { label: '1 ano', months: 12 },
+  { label: '2 anos', months: 24 },
+  { label: '5 anos', months: 60 },
+];
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler o PDF.'));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(file);
+  });
+}
 
 export const Contracts: React.FC = () => {
-  const { isManager } = useAuth();
+  const { isManager, companyId, company, profile } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +69,10 @@ export const Contracts: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [formError, setFormError] = useState('');
+  const [signingId, setSigningId] = useState<string | null>(null);
+  const [signResult, setSignResult] = useState<{ link: string; emailed: boolean; email: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
@@ -31,28 +80,31 @@ export const Contracts: React.FC = () => {
     name: '',
     supplierId: '',
     area: '',
-    type: 'Software',
-    startDate: '',
+    type: 'T.I.',
+    startDate: today(),
     endDate: '',
-    value: 0,
+    value: '',
     internalOwner: '',
     description: '',
     status: 'Ativo'
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'contracts'), orderBy('createdAt', 'desc'));
+    if (!companyId) return;
+    const q = query(collection(db, 'contracts'), where('companyId', '==', companyId));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setContracts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+        rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        setContracts(rows);
         setLoading(false);
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'contracts')
     );
 
     const suppliersUnsubscribe = onSnapshot(
-      collection(db, 'suppliers'),
+      query(collection(db, 'suppliers'), where('companyId', '==', companyId)),
       (snapshot) => {
         setSuppliers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
       }
@@ -62,7 +114,7 @@ export const Contracts: React.FC = () => {
       unsubscribe();
       suppliersUnsubscribe();
     };
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     if (showModal && contracts.length >= 0) {
@@ -89,24 +141,40 @@ export const Contracts: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     setUploading(true);
     try {
-      let pdfUrl = '';
-      
+      // PDF em base64 (sem Firebase Storage). Guardado num doc separado
+      // (contractFiles) para não pesar a listagem de contratos.
+      let pdfBase64 = '';
       if (selectedFile) {
-        const storageRef = ref(storage, `contracts/${Date.now()}_${selectedFile.name}`);
-        const uploadResult = await uploadBytes(storageRef, selectedFile);
-        pdfUrl = await getDownloadURL(uploadResult.ref);
+        pdfBase64 = await fileToBase64(selectedFile);
+        if (pdfBase64.length > 900_000) {
+          setFormError('PDF muito grande (máx. ~650 KB). Comprima o arquivo e tente de novo.');
+          setUploading(false);
+          return;
+        }
       }
 
       const supplier = suppliers.find(s => s.id === formData.supplierId);
-      await addDoc(collection(db, 'contracts'), {
+      const docRef = await addDoc(collection(db, 'contracts'), {
         ...formData,
+        companyId,
         supplierName: supplier?.name || '',
         createdAt: new Date().toISOString(),
-        value: Number(formData.value),
-        pdfUrl
+        value: Number(formData.value) || 0,
+        hasPdf: !!selectedFile,
+        pdfName: selectedFile?.name || '',
       });
+
+      if (selectedFile) {
+        await setDoc(doc(db, 'contractFiles', docRef.id), {
+          companyId,
+          name: selectedFile.name,
+          data: pdfBase64,
+          createdAt: new Date().toISOString(),
+        });
+      }
 
       setShowModal(false);
       setSelectedFile(null);
@@ -115,18 +183,88 @@ export const Contracts: React.FC = () => {
         name: '',
         supplierId: '',
         area: '',
-        type: 'Software',
-        startDate: '',
+        type: 'T.I.',
+        startDate: today(),
         endDate: '',
-        value: 0,
+        value: '',
         internalOwner: '',
         description: '',
         status: 'Ativo'
       });
     } catch (err) {
+      setFormError('Não foi possível salvar o contrato. Tente novamente.');
       handleFirestoreError(err, OperationType.CREATE, 'contracts');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const viewPdf = async (contract: any) => {
+    if (!contract.hasPdf) return;
+    try {
+      const snap = await getDoc(doc(db, 'contractFiles', contract.id));
+      if (snap.exists()) openBase64Pdf(snap.data().data as string);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, 'contractFiles');
+    }
+  };
+
+  const handleSendSignature = async (contract: any) => {
+    const supplier = suppliers.find((s) => s.id === contract.supplierId);
+    const supplierEmail = supplier?.contactEmail || '';
+    if (!supplierEmail) {
+      alert('Este fornecedor não tem e-mail cadastrado. Cadastre o e-mail em Fornecedores.');
+      return;
+    }
+    setSigningId(contract.id);
+    try {
+      const token = generateToken();
+
+      // Anexa o PDF (se houver) ao pedido, para o fornecedor visualizar.
+      let pdfData = '';
+      if (contract.hasPdf) {
+        const fileSnap = await getDoc(doc(db, 'contractFiles', contract.id));
+        if (fileSnap.exists()) pdfData = fileSnap.data().data || '';
+      }
+
+      await setDoc(doc(db, 'signatureRequests', token), {
+        companyId,
+        companyName: company?.name || 'Empresa',
+        contractId: contract.id,
+        contractName: contract.name,
+        contractNumber: contract.contractNumber || '',
+        supplierName: supplier?.name || '',
+        supplierEmail,
+        requesterEmail: profile?.email || '',
+        value: Number(contract.value) || 0,
+        startDate: contract.startDate || '',
+        endDate: contract.endDate || '',
+        pdfData,
+        signed: false,
+        reconciled: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      await updateDoc(doc(db, 'contracts', contract.id), {
+        status: 'Pendente',
+        signatureToken: token,
+      });
+
+      const link = buildSignUrl(token);
+      const mail = supplierInviteEmail({
+        supplierName: supplier?.name || '',
+        companyName: company?.name || 'Empresa',
+        contractName: contract.name,
+        link,
+      });
+      const emailed = await sendEmail({ to: supplierEmail, ...mail });
+
+      setSignResult({ link, emailed, email: supplierEmail });
+      setCopied(false);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'signatureRequests');
+    } finally {
+      setSigningId(null);
     }
   };
 
@@ -149,6 +287,7 @@ export const Contracts: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Ativo': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'Pendente': return 'bg-amber-100 text-amber-700 border-amber-200';
       case 'Vencido': return 'bg-red-100 text-red-700 border-red-200';
       case 'Em renovação': return 'bg-blue-100 text-blue-700 border-blue-200';
       default: return 'bg-slate-100 text-slate-700 border-slate-200';
@@ -239,16 +378,26 @@ export const Contracts: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {contract.pdfUrl && (
-                        <a 
-                          href={contract.pdfUrl} 
-                          target="_blank" 
-                          rel="noreferrer"
+                      {contract.hasPdf && (
+                        <button
+                          type="button"
+                          onClick={() => viewPdf(contract)}
                           className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
                           title="Ver PDF"
                         >
                           <ExternalLink size={18} />
-                        </a>
+                        </button>
+                      )}
+                      {isManager && contract.status !== 'Ativo' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSendSignature(contract)}
+                          disabled={signingId === contract.id}
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
+                          title="Enviar para assinatura"
+                        >
+                          {signingId === contract.id ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
+                        </button>
                       )}
                       <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
                         <Edit size={18} />
@@ -318,54 +467,74 @@ export const Contracts: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Área de TI</label>
-                  <input 
-                    required
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                    value={formData.area}
-                    onChange={e => setFormData({...formData, area: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Tipo</label>
-                  <select 
+                  <label className="text-sm font-medium text-slate-700">Tipo (departamento)</label>
+                  <select
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                     value={formData.type}
-                    onChange={e => setFormData({...formData, type: e.target.value})}
+                    onChange={e => setFormData({ ...formData, type: e.target.value, area: '' })}
                   >
-                    <option value="Suporte">Suporte</option>
-                    <option value="Software">Software</option>
-                    <option value="Infraestrutura">Infraestrutura</option>
-                    <option value="Cloud">Cloud</option>
+                    {CONTRACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Valor</label>
-                  <input 
-                    type="number"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  <label className="text-sm font-medium text-slate-700">Área</label>
+                  <SearchableSelect
+                    value={formData.area}
+                    onChange={(v) => setFormData({ ...formData, area: v })}
+                    options={AREAS_BY_TYPE[formData.type] || []}
+                    placeholder={formData.type === 'Outros' ? 'Digite a área' : 'Busque ou selecione a área'}
+                    allowFreeText
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Valor (R$)</label>
+                  <NumericInput
+                    decimal
+                    placeholder="0,00"
                     value={formData.value}
-                    onChange={e => setFormData({...formData, value: Number(e.target.value)})}
+                    onChange={(v) => setFormData({ ...formData, value: v })}
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700">Data Início</label>
-                  <input 
+                  <input
                     type="date"
                     required
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                     value={formData.startDate}
-                    onChange={e => setFormData({...formData, startDate: e.target.value})}
+                    onChange={e => setFormData({ ...formData, startDate: e.target.value })}
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-sm font-medium text-slate-700">Data Fim</label>
-                  <input 
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {DATE_PRESETS.map((p) => {
+                      const target = addMonths(formData.startDate || today(), p.months);
+                      const active = formData.endDate === target;
+                      return (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, endDate: target })}
+                          className={cn(
+                            'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                            active
+                              ? 'border-blue-600 bg-blue-600 text-white'
+                              : 'border-slate-200 text-slate-600 hover:border-blue-300 hover:bg-blue-50'
+                          )}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input
                     type="date"
                     required
+                    min={formData.startDate}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                     value={formData.endDate}
-                    onChange={e => setFormData({...formData, endDate: e.target.value})}
+                    onChange={e => setFormData({ ...formData, endDate: e.target.value })}
                   />
                 </div>
               </div>
@@ -431,8 +600,14 @@ export const Contracts: React.FC = () => {
                 </div>
               </div>
 
+              {formError && (
+                <p className="rounded-xl border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-600">
+                  {formError}
+                </p>
+              )}
+
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg transition"
@@ -454,6 +629,54 @@ export const Contracts: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado do envio de assinatura */}
+      {signResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <PenLine size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Contrato enviado para assinatura</h3>
+                <p className="text-sm text-slate-500">
+                  {signResult.emailed
+                    ? `E-mail enviado para ${signResult.email}.`
+                    : `Não foi possível enviar o e-mail automático (disponível em produção). Copie o link e envie ao fornecedor:`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+              <input
+                readOnly
+                value={signResult.link}
+                className="min-w-0 flex-1 bg-transparent px-2 text-sm text-slate-600 outline-none"
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(signResult.link);
+                  setCopied(true);
+                }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+              >
+                {copied ? <CheckCheck size={14} /> : <Copy size={14} />}
+                {copied ? 'Copiado' : 'Copiar'}
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setSignResult(null)}
+                className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

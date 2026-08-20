@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy 
+import {
+  collection,
+  onSnapshot,
+  query,
+  where
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../AuthContext';
 import { 
   FileDown, 
   FileText, 
@@ -22,6 +23,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export const Reports: React.FC = () => {
+  const { companyId } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -29,18 +31,22 @@ export const Reports: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch all necessary data for reports
-    const contractsUnsubscribe = onSnapshot(collection(db, 'contracts'), (snapshot) => {
-      setContracts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    if (!companyId) return;
+    // Dados da empresa para os relatórios
+    const contractsUnsubscribe = onSnapshot(
+      query(collection(db, 'contracts'), where('companyId', '==', companyId)),
+      (snapshot) => setContracts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+    );
 
-    const incidentsUnsubscribe = onSnapshot(collection(db, 'incidents'), (snapshot) => {
-      setIncidents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const incidentsUnsubscribe = onSnapshot(
+      query(collection(db, 'incidents'), where('companyId', '==', companyId)),
+      (snapshot) => setIncidents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+    );
 
-    const suppliersUnsubscribe = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
-      setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const suppliersUnsubscribe = onSnapshot(
+      query(collection(db, 'suppliers'), where('companyId', '==', companyId)),
+      (snapshot) => setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+    );
 
     setLoading(false);
 
@@ -49,7 +55,7 @@ export const Reports: React.FC = () => {
       incidentsUnsubscribe();
       suppliersUnsubscribe();
     };
-  }, []);
+  }, [companyId]);
 
   const generatePDF = (type: 'active' | 'expiring' | 'closed' | 'incidents' | 'suppliers') => {
     setIsGenerating(type);
