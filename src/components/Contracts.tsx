@@ -5,6 +5,7 @@ import {
   addDoc,
   setDoc,
   getDoc,
+  updateDoc,
   doc,
   deleteDoc,
   query,
@@ -12,11 +13,12 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
-import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Edit, Upload, X, Loader2 } from 'lucide-react';
+import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Edit, Upload, X, Loader2, PenLine, Copy, CheckCheck } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 import { SearchableSelect } from './ui/SearchableSelect';
 import { NumericInput } from './ui/NumericInput';
 import { CONTRACT_TYPES, AREAS_BY_TYPE } from '../lib/contractTypes';
+import { generateToken, buildSignUrl, sendEmail, supplierInviteEmail } from '../lib/signatures';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -59,7 +61,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export const Contracts: React.FC = () => {
-  const { isManager, companyId } = useAuth();
+  const { isManager, companyId, company, profile } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +70,9 @@ export const Contracts: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [formError, setFormError] = useState('');
+  const [signingId, setSigningId] = useState<string | null>(null);
+  const [signResult, setSignResult] = useState<{ link: string; emailed: boolean; email: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
@@ -204,6 +209,65 @@ export const Contracts: React.FC = () => {
     }
   };
 
+  const handleSendSignature = async (contract: any) => {
+    const supplier = suppliers.find((s) => s.id === contract.supplierId);
+    const supplierEmail = supplier?.contactEmail || '';
+    if (!supplierEmail) {
+      alert('Este fornecedor não tem e-mail cadastrado. Cadastre o e-mail em Fornecedores.');
+      return;
+    }
+    setSigningId(contract.id);
+    try {
+      const token = generateToken();
+
+      // Anexa o PDF (se houver) ao pedido, para o fornecedor visualizar.
+      let pdfData = '';
+      if (contract.hasPdf) {
+        const fileSnap = await getDoc(doc(db, 'contractFiles', contract.id));
+        if (fileSnap.exists()) pdfData = fileSnap.data().data || '';
+      }
+
+      await setDoc(doc(db, 'signatureRequests', token), {
+        companyId,
+        companyName: company?.name || 'Empresa',
+        contractId: contract.id,
+        contractName: contract.name,
+        contractNumber: contract.contractNumber || '',
+        supplierName: supplier?.name || '',
+        supplierEmail,
+        requesterEmail: profile?.email || '',
+        value: Number(contract.value) || 0,
+        startDate: contract.startDate || '',
+        endDate: contract.endDate || '',
+        pdfData,
+        signed: false,
+        reconciled: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      await updateDoc(doc(db, 'contracts', contract.id), {
+        status: 'Pendente',
+        signatureToken: token,
+      });
+
+      const link = buildSignUrl(token);
+      const mail = supplierInviteEmail({
+        supplierName: supplier?.name || '',
+        companyName: company?.name || 'Empresa',
+        contractName: contract.name,
+        link,
+      });
+      const emailed = await sendEmail({ to: supplierEmail, ...mail });
+
+      setSignResult({ link, emailed, email: supplierEmail });
+      setCopied(false);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'signatureRequests');
+    } finally {
+      setSigningId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (window.confirm('Tem certeza que deseja excluir este contrato?')) {
       try {
@@ -223,6 +287,7 @@ export const Contracts: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Ativo': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'Pendente': return 'bg-amber-100 text-amber-700 border-amber-200';
       case 'Vencido': return 'bg-red-100 text-red-700 border-red-200';
       case 'Em renovação': return 'bg-blue-100 text-blue-700 border-blue-200';
       default: return 'bg-slate-100 text-slate-700 border-slate-200';
@@ -321,6 +386,17 @@ export const Contracts: React.FC = () => {
                           title="Ver PDF"
                         >
                           <ExternalLink size={18} />
+                        </button>
+                      )}
+                      {isManager && contract.status !== 'Ativo' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSendSignature(contract)}
+                          disabled={signingId === contract.id}
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-50"
+                          title="Enviar para assinatura"
+                        >
+                          {signingId === contract.id ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
                         </button>
                       )}
                       <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
@@ -553,6 +629,54 @@ export const Contracts: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado do envio de assinatura */}
+      {signResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <PenLine size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Contrato enviado para assinatura</h3>
+                <p className="text-sm text-slate-500">
+                  {signResult.emailed
+                    ? `E-mail enviado para ${signResult.email}.`
+                    : `Não foi possível enviar o e-mail automático (disponível em produção). Copie o link e envie ao fornecedor:`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+              <input
+                readOnly
+                value={signResult.link}
+                className="min-w-0 flex-1 bg-transparent px-2 text-sm text-slate-600 outline-none"
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(signResult.link);
+                  setCopied(true);
+                }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+              >
+                {copied ? <CheckCheck size={14} /> : <Copy size={14} />}
+                {copied ? 'Copiado' : 'Copiar'}
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setSignResult(null)}
+                className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

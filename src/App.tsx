@@ -12,12 +12,18 @@ import { Notifications } from './components/Notifications';
 import { Reports } from './components/Reports';
 import { CompaniesAdmin } from './components/CompaniesAdmin';
 import { UsersAdmin } from './components/UsersAdmin';
+import { SignContract } from './components/SignContract';
+import { SignatureReconciler } from './components/SignatureReconciler';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FileSignature } from 'lucide-react';
 
 export default function App() {
   const { user, loading, access, isSuperAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Rota pública de assinatura (?assinar=TOKEN) — não exige login.
+  const signToken = new URLSearchParams(window.location.search).get('assinar');
+  if (signToken) return <SignContract token={signToken} />;
 
   // Super admin abre direto no console de empresas
   useEffect(() => {
@@ -71,6 +77,7 @@ export default function App() {
               'radial-gradient(60% 45% at 100% 0%, rgb(67 83 230 / 0.06), transparent 60%), radial-gradient(50% 40% at 0% 100%, rgb(34 211 238 / 0.05), transparent 55%)',
           }}
         />
+        <SignatureReconciler />
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="relative flex-1 lg:ml-64 p-4 lg:p-8">
           <div className="max-w-7xl mx-auto">

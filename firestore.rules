@@ -173,5 +173,34 @@ service cloud.firestore {
                          .affectedKeys().hasOnly(['read']);
       allow delete: if canWriteCompany(resource.data.companyId);
     }
+
+    // ===============================================================
+    // Pedidos de assinatura
+    // O id do doc é um token aleatório (o "segredo" do link).
+    // ===============================================================
+    match /signatureRequests/{token} {
+      // Leitura pública por token (link de assinatura). Sem listagem
+      // para não vazar dados entre empresas.
+      allow get: if true;
+      allow list: if false;
+
+      // A empresa (gestor) cria o pedido.
+      allow create: if isManager() &&
+                       request.resource.data.companyId != null &&
+                       canWriteCompany(request.resource.data.companyId);
+
+      allow update: if
+        // Assinatura pública: marca como assinado UMA vez, só campos da assinatura.
+        (resource.data.signed == false &&
+         request.resource.data.signed == true &&
+         request.resource.data.diff(resource.data)
+           .affectedKeys().hasOnly(['signed', 'signerName', 'signedAt', 'signatureData']))
+        ||
+        // Reconciliação pela empresa: apenas marca reconciled.
+        (canWriteCompany(resource.data.companyId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reconciled']));
+
+      allow delete: if canWriteCompany(resource.data.companyId);
+    }
   }
 }
