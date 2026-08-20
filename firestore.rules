@@ -99,7 +99,8 @@ service cloud.firestore {
                        (isCompanyAdmin() && resource.data.companyId == myCompany()) ||
                        (request.auth.uid == uid &&
                         request.resource.data.diff(resource.data)
-                          .affectedKeys().hasOnly(['displayName', 'mustChangePassword', 'photoUrl']));
+                          .affectedKeys().hasOnly(['displayName', 'mustChangePassword', 'photoUrl',
+                                                   'phone', 'cpf', 'notificationEmail', 'profileComplete']));
 
       allow delete: if isSuperAdmin();
     }

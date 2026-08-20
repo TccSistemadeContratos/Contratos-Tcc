@@ -25,14 +25,24 @@ export function isSuperAdminEmail(email?: string | null): boolean {
 
 export interface UserProfile {
   uid: string;
-  email: string;
+  email: string;               // e-mail de ACESSO (login) — não é para receber avisos
   displayName: string;
   companyId: string | null;
   role: Role;
   status: Status;
   mustChangePassword: boolean;
   photoUrl?: string;
+  phone?: string;              // telefone de contato
+  cpf?: string;                // CPF
+  notificationEmail?: string;  // e-mail que RECEBE os avisos (retorno de assinatura, etc.)
+  profileComplete?: boolean;
   createdAt: string;
+}
+
+// Campos obrigatórios no primeiro acesso (perfil pessoal).
+export function isProfileComplete(p?: Partial<UserProfile> | null): boolean {
+  if (!p) return false;
+  return Boolean(p.displayName && p.phone && p.cpf && p.notificationEmail);
 }
 
 export type PaymentStatus = 'paid' | 'unpaid';

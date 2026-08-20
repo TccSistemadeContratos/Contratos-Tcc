@@ -235,7 +235,7 @@ export const Contracts: React.FC = () => {
         contractNumber: contract.contractNumber || '',
         supplierName: supplier?.name || '',
         supplierEmail,
-        requesterEmail: profile?.email || '',
+        requesterEmail: profile?.notificationEmail || profile?.email || '',
         value: Number(contract.value) || 0,
         startDate: contract.startDate || '',
         endDate: contract.endDate || '',
@@ -389,7 +389,7 @@ export const Contracts: React.FC = () => {
                           <ExternalLink size={18} />
                         </button>
                       )}
-                      {isManager && (
+                      {isManager && contract.status !== 'Ativo' && (
                         <button
                           type="button"
                           onClick={() => handleSendSignature(contract)}
@@ -398,8 +398,13 @@ export const Contracts: React.FC = () => {
                           title="Enviar para assinatura"
                         >
                           {signingId === contract.id ? <Loader2 size={16} className="animate-spin" /> : <PenLine size={16} />}
-                          Assinatura
+                          {contract.status === 'Pendente' ? 'Reenviar' : 'Assinatura'}
                         </button>
+                      )}
+                      {contract.status === 'Ativo' && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600" title={contract.signerName ? `Assinado por ${contract.signerName}` : 'Assinado'}>
+                          <CheckCheck size={15} /> Assinado
+                        </span>
                       )}
                       {isManager && (
                         <button

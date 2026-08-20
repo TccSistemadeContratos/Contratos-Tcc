@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { isSuperAdminEmail, type UserProfile, type Company, type Role } from './lib/roles';
+import { isSuperAdminEmail, isProfileComplete, type UserProfile, type Company, type Role } from './lib/roles';
 
 // Estado do portão de acesso ao SaaS
 type AccessStatus =
@@ -10,7 +10,8 @@ type AccessStatus =
   | 'ok'
   | 'no-account'        // autenticou, mas não tem conta no FlowSign
   | 'inactive'          // conta ou empresa desativada (assinatura inativa)
-  | 'must-change-password';
+  | 'must-change-password'
+  | 'incomplete-profile'; // precisa preencher o perfil no primeiro acesso
 
 interface AuthContextType {
   user: User | null;
@@ -129,6 +130,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (prof.mustChangePassword) {
       setAccess('must-change-password');
+      return;
+    }
+
+    if (!isProfileComplete(prof)) {
+      setAccess('incomplete-profile');
       return;
     }
 

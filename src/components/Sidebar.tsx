@@ -11,14 +11,12 @@ import {
   FileSignature,
   Building2,
   UserCog,
-  BarChart3,
-  Camera
+  BarChart3
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { cn } from '../lib/utils';
-import { ProfilePhoto } from './ProfilePhoto';
 
 interface SidebarProps {
   activeTab: string;
@@ -28,7 +26,6 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const { isSuperAdmin, isCompanyAdmin, profile, company } = useAuth();
   const [isOpen, setIsOpen] = React.useState(false);
-  const [showPhoto, setShowPhoto] = React.useState(false);
 
   const navItems = isSuperAdmin
     ? [{ id: 'companies', label: 'Empresas', icon: Building2 }]
@@ -91,28 +88,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             )}
           </div>
 
-          {/* User Info */}
-          <button
-            onClick={() => setShowPhoto(true)}
-            className="group mx-4 mb-2 flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.04] px-3 py-3 text-left transition hover:bg-white/[0.08]"
-            title="Alterar foto de perfil"
-          >
-            <div className="relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-blue-600/25 text-sm font-semibold text-blue-200">
-              {profile?.photoUrl ? (
-                <img src={profile.photoUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                (profile?.displayName || profile?.email || '?').charAt(0).toUpperCase()
-              )}
-              <span className="absolute inset-0 hidden place-items-center bg-black/40 group-hover:grid">
-                <Camera size={14} className="text-white" />
-              </span>
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">{profile?.displayName || profile?.email}</p>
-              <p className="text-xs text-slate-400">{roleName(profile?.role)}</p>
-            </div>
-          </button>
-
           {/* Nav */}
           <nav className="flex-1 px-4 py-4 space-y-1">
             {navItems.map((item) => {
@@ -141,8 +116,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             })}
           </nav>
 
-          {/* Logout */}
-          <div className="p-4 border-t border-white/5">
+          {/* Rodapé: perfil do usuário + sair */}
+          <div className="border-t border-white/5 p-3">
+            <button
+              onClick={() => {
+                setActiveTab('profile');
+                setIsOpen(false);
+              }}
+              className="group mb-1 flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-white/[0.06]"
+              title="Meu perfil"
+            >
+              <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-blue-600/25 text-sm font-semibold text-blue-200">
+                {profile?.photoUrl ? (
+                  <img src={profile.photoUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  (profile?.displayName || profile?.email || '?').charAt(0).toUpperCase()
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">{profile?.displayName || profile?.email}</p>
+                <p className="text-xs text-slate-400">{roleName(profile?.role)}</p>
+              </div>
+            </button>
             <button
               onClick={handleSignOut}
               className="w-full flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
@@ -162,7 +157,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         />
       )}
 
-      {showPhoto && <ProfilePhoto onClose={() => setShowPhoto(false)} />}
     </>
   );
 };

@@ -14,6 +14,8 @@ import { CompaniesAdmin } from './components/CompaniesAdmin';
 import { UsersAdmin } from './components/UsersAdmin';
 import { SignContract } from './components/SignContract';
 import { SignatureReconciler } from './components/SignatureReconciler';
+import { MyProfile } from './components/MyProfile';
+import { NotificationBell } from './components/NotificationBell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FileSignature } from 'lucide-react';
 
@@ -51,8 +53,10 @@ export default function App() {
   if (access === 'must-change-password') return <ChangePassword />;
   if (access === 'no-account') return <AccessBlocked reason="no-account" />;
   if (access === 'inactive') return <AccessBlocked reason="inactive" />;
+  if (access === 'incomplete-profile') return <MyProfile fullscreen />;
 
   const renderContent = () => {
+    if (activeTab === 'profile') return <MyProfile />;
     if (isSuperAdmin) return <CompaniesAdmin />;
     switch (activeTab) {
       case 'dashboard': return <Dashboard />;
@@ -62,6 +66,7 @@ export default function App() {
       case 'reports': return <Reports />;
       case 'notifications': return <Notifications />;
       case 'users': return <UsersAdmin />;
+      case 'profile': return <MyProfile />;
       default: return <Dashboard />;
     }
   };
@@ -81,6 +86,11 @@ export default function App() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="relative flex-1 lg:ml-64 p-4 lg:p-8">
           <div className="max-w-7xl mx-auto">
+            {!isSuperAdmin && (
+              <div className="mb-4 flex justify-end lg:mb-2">
+                <NotificationBell />
+              </div>
+            )}
             {renderContent()}
           </div>
         </main>
