@@ -20,6 +20,7 @@ interface CreateUserInput {
   displayName: string;
   companyId: string | null;
   role: Role;
+  area?: string;
 }
 
 export async function createUserAccount({
@@ -28,6 +29,7 @@ export async function createUserAccount({
   displayName,
   companyId,
   role,
+  area,
 }: CreateUserInput): Promise<string> {
   // Nome único por chamada — evita colisão de apps secundários simultâneos.
   const name = `fs-secondary-${Math.round(performance.now())}-${email}`;
@@ -44,6 +46,7 @@ export async function createUserAccount({
       displayName: displayName.trim(),
       companyId,
       role,
+      area: area || '',
       status: 'active',
       mustChangePassword: true,
       createdAt: new Date().toISOString(),

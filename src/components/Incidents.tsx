@@ -13,8 +13,9 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
-import { Plus, Search, AlertCircle, CheckCircle2, Clock, MoreVertical, Filter } from 'lucide-react';
-import { formatDate, cn } from '../lib/utils';
+import { Plus, CheckCircle2, Clock } from 'lucide-react';
+import { formatDate, nowBrasilLocalInput, cn } from '../lib/utils';
+import { sendEmail, incidentOpenedEmail } from '../lib/signatures';
 
 const IncidentTimer: React.FC<{ incident: any, contract: any, suppliers: any[] }> = ({ incident, contract, suppliers }) => {
   const [timeLeft, setTimeLeft] = useState<string>('--:--:--');
@@ -71,13 +72,15 @@ export const Incidents: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [selected, setSelected] = useState<any | null>(null);
   const [formData, setFormData] = useState({
     contractId: '',
     system: '',
     priority: 'Médio',
-    openedAt: new Date().toISOString().slice(0, 16),
+    openedAt: nowBrasilLocalInput(),
     status: 'Pendente',
-    supplierContact: ''
+    supplierContact: '',
+    description: ''
   });
 
   useEffect(() => {
@@ -120,11 +123,17 @@ export const Incidents: React.FC = () => {
     setSaving(true);
     try {
       const contract = contracts.find(c => c.id === formData.contractId);
-      
+      const openedAtIso = new Date(formData.openedAt).toISOString();
+
       await addDoc(collection(db, 'incidents'), {
         ...formData,
         companyId,
-        openedAt: new Date(formData.openedAt).toISOString(),
+        contractName: contract?.name || '',
+        supplierId: contract?.supplierId || '',
+        responsibleEmail: contract?.responsibleEmail || '',
+        responsibleName: contract?.internalOwner || '',
+        slaAlertSent: false,
+        openedAt: openedAtIso,
         createdAt: new Date().toISOString()
       });
 
@@ -136,14 +145,37 @@ export const Incidents: React.FC = () => {
         });
       }
 
+      // Avisa o funcionário responsável do contrato + notificação no portal
+      if (contract?.responsibleEmail) {
+        const mail = incidentOpenedEmail({
+          responsibleName: contract.internalOwner || '',
+          contractName: contract.name || '',
+          system: formData.system,
+          priority: formData.priority,
+          description: formData.description,
+          openedAt: formatDate(openedAtIso),
+        });
+        sendEmail({ to: contract.responsibleEmail, ...mail });
+      }
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          companyId,
+          type: 'chamado',
+          message: `Novo chamado aberto: "${formData.system}" (${formData.priority}) no contrato "${contract?.name || '-'}".`,
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+      } catch { /* não bloqueia a abertura do chamado */ }
+
       setShowModal(false);
       setFormData({
         contractId: '',
         system: '',
         priority: 'Médio',
-        openedAt: new Date().toISOString().slice(0, 16),
+        openedAt: nowBrasilLocalInput(),
         status: 'Pendente',
-        supplierContact: ''
+        supplierContact: '',
+        description: ''
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'incidents');
@@ -243,7 +275,11 @@ export const Incidents: React.FC = () => {
       {/* Incident Cards */}
       <div className="grid grid-cols-1 gap-4">
         {incidents.map((incident) => (
-          <div key={incident.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-200 transition-colors group">
+          <div
+            key={incident.id}
+            onClick={() => setSelected(incident)}
+            className="cursor-pointer bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition group"
+          >
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-start gap-4">
                 <div className={cn(
@@ -286,8 +322,8 @@ export const Incidents: React.FC = () => {
                   </div>
                 )}
                 {incident.status !== 'Resolvido' && isManager && (
-                  <button 
-                    onClick={() => handleResolve(incident.id)}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleResolve(incident.id); }}
                     className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition"
                   >
                     Resolver
@@ -365,10 +401,20 @@ export const Incidents: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Responsável Fornecedor</label>
-                <input 
+                <input
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   value={formData.supplierContact}
                   onChange={e => setFormData({...formData, supplierContact: e.target.value})}
+                  disabled={saving}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Descrição do chamado</label>
+                <textarea
+                  className="h-24 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="Descreva o problema. Vai no e-mail para o responsável."
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
                   disabled={saving}
                 />
               </div>
@@ -394,9 +440,64 @@ export const Incidents: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Detalhes do chamado */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setSelected(null)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-slate-100 p-6">
+              <div>
+                <div className="mb-1 flex items-center gap-2">
+                  <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase', getPriorityColor(selected.priority))}>
+                    {selected.priority}
+                  </span>
+                  <span className={cn(
+                    'rounded-full px-2 py-0.5 text-[10px] font-bold',
+                    selected.status === 'Resolvido' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  )}>
+                    {selected.status}
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900">{selected.system}</h3>
+              </div>
+              <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+            </div>
+            <div className="space-y-3 p-6 text-sm">
+              <Detail label="Contrato" value={selected.contractName || contracts.find(c => c.id === selected.contractId)?.name || '—'} />
+              <Detail label="Fornecedor" value={suppliers.find(s => s.id === selected.supplierId)?.name || '—'} />
+              <Detail label="Responsável do contrato" value={selected.responsibleName || '—'} />
+              <Detail label="Responsável fornecedor" value={selected.supplierContact || '—'} />
+              <Detail label="Aberto em" value={formatDate(selected.openedAt)} />
+              {selected.resolvedAt && <Detail label="Resolvido em" value={formatDate(selected.resolvedAt)} />}
+              {selected.slaResolutionStatus && <Detail label="SLA" value={selected.slaResolutionStatus} />}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Descrição</p>
+                <p className="mt-1 whitespace-pre-wrap text-slate-700">{selected.description || 'Sem descrição.'}</p>
+              </div>
+            </div>
+            {selected.status !== 'Resolvido' && isManager && (
+              <div className="flex justify-end gap-3 border-t border-slate-100 p-4">
+                <button
+                  onClick={() => { handleResolve(selected.id); setSelected(null); }}
+                  className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Marcar como resolvido
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+const Detail: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="flex justify-between gap-4 border-b border-slate-50 pb-2">
+    <span className="text-slate-400">{label}</span>
+    <span className="text-right font-medium text-slate-800">{value}</span>
+  </div>
+);
 
 const X = ({ size, className }: any) => (
   <svg 

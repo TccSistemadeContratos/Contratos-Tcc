@@ -14,6 +14,7 @@ import { CompaniesAdmin } from './components/CompaniesAdmin';
 import { UsersAdmin } from './components/UsersAdmin';
 import { SignContract } from './components/SignContract';
 import { SignatureReconciler } from './components/SignatureReconciler';
+import { SlaMonitor } from './components/SlaMonitor';
 import { MyProfile } from './components/MyProfile';
 import { NotificationBell } from './components/NotificationBell';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -83,6 +84,7 @@ export default function App() {
           }}
         />
         <SignatureReconciler />
+        <SlaMonitor />
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="relative flex-1 lg:ml-64 p-4 lg:p-8">
           <div className="max-w-7xl mx-auto">

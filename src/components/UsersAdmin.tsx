@@ -4,6 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { createUserAccount, mapAdminAuthError } from '../lib/adminUsers';
 import type { UserProfile, Role } from '../lib/roles';
+import { CONTRACT_TYPES } from '../lib/contractTypes';
 import { Users, Plus, X, Loader2, Power, CheckCircle2, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { cn, formatDate } from '../lib/utils';
 
@@ -19,7 +20,7 @@ export const UsersAdmin: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user' as Role });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user' as Role, area: 'T.I.' });
 
   useEffect(() => {
     if (!companyId) return;
@@ -47,9 +48,10 @@ export const UsersAdmin: React.FC = () => {
         displayName: form.name,
         companyId,
         role: form.role,
+        area: form.area,
       });
       setShowModal(false);
-      setForm({ name: '', email: '', password: '', role: 'user' });
+      setForm({ name: '', email: '', password: '', role: 'user', area: 'T.I.' });
     } catch (err: any) {
       setError(mapAdminAuthError(err?.code));
     } finally {
@@ -116,6 +118,7 @@ export const UsersAdmin: React.FC = () => {
                           {u.uid === profile?.uid && <span className="ml-2 text-xs font-normal text-slate-400">(você)</span>}
                         </p>
                         <p className="text-xs text-slate-500">{u.email}</p>
+                        {u.area && <p className="text-xs text-slate-400">Área: {u.area}</p>}
                       </div>
                     </div>
                   </td>
@@ -184,16 +187,28 @@ export const UsersAdmin: React.FC = () => {
               <Field label="Nome" required value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
               <Field label="E-mail de acesso" type="email" required value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
               <Field label="Senha provisória" required value={form.password} onChange={(v) => setForm({ ...form, password: v })} hint="Mínimo de 6 caracteres. O usuário troca no 1º acesso." />
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Papel</label>
-                <select
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
-                >
-                  <option value="user">Usuário</option>
-                  <option value="company_admin">Administrador</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Papel</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    value={form.role}
+                    onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
+                  >
+                    <option value="user">Usuário</option>
+                    <option value="company_admin">Administrador</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Área</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    value={form.area}
+                    onChange={(e) => setForm({ ...form, area: e.target.value })}
+                  >
+                    {CONTRACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
               </div>
 
               {error && (

@@ -69,6 +69,57 @@ export function supplierInviteEmail(opts: {
   };
 }
 
+export function incidentOpenedEmail(opts: {
+  responsibleName: string;
+  contractName: string;
+  system: string;
+  priority: string;
+  description: string;
+  openedAt: string;
+}): { subject: string; html: string } {
+  return {
+    subject: `Novo chamado aberto — ${opts.system} (${opts.priority})`,
+    html: shell(
+      'Um chamado foi aberto',
+      `<p style="color:#475569;line-height:1.6;font-size:14px">
+        Olá${opts.responsibleName ? ` <b>${opts.responsibleName}</b>` : ''}, um chamado foi aberto no contrato
+        <b>"${opts.contractName}"</b>, do qual você é responsável.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;color:#0b1020">
+        <tr><td style="padding:6px 0;color:#94a3b8">Sistema/Serviço</td><td style="padding:6px 0"><b>${opts.system}</b></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8">Prioridade</td><td style="padding:6px 0"><b>${opts.priority}</b></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8">Aberto em</td><td style="padding:6px 0">${opts.openedAt}</td></tr>
+      </table>
+      ${opts.description ? `<p style="color:#475569;line-height:1.6;font-size:14px"><b>Descrição:</b><br>${opts.description}</p>` : ''}`
+    ),
+  };
+}
+
+export function slaBreachEmail(opts: {
+  responsibleName: string;
+  contractName: string;
+  system: string;
+  supplierName: string;
+  slaLimit: number;
+  hoursElapsed: number;
+}): { subject: string; html: string } {
+  return {
+    subject: `⚠️ SLA ESTOURADO — ${opts.system}`,
+    html: shell(
+      'SLA estourado — atenção máxima',
+      `<p style="color:#b91c1c;line-height:1.6;font-size:14px;font-weight:600">
+        O SLA do chamado "${opts.system}" foi ultrapassado. Necessidade máxima de atendimento.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;color:#0b1020">
+        <tr><td style="padding:6px 0;color:#94a3b8">Contrato</td><td style="padding:6px 0"><b>${opts.contractName}</b></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8">Fornecedor</td><td style="padding:6px 0">${opts.supplierName}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8">Meta de SLA</td><td style="padding:6px 0">${opts.slaLimit}h</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8">Tempo decorrido</td><td style="padding:6px 0"><b>${opts.hoursElapsed}h</b></td></tr>
+      </table>`
+    ),
+  };
+}
+
 export function signedConfirmationEmail(opts: {
   contractName: string;
   signerName: string;

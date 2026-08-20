@@ -35,6 +35,7 @@ export interface UserProfile {
   phone?: string;              // telefone de contato
   cpf?: string;                // CPF
   notificationEmail?: string;  // e-mail que RECEBE os avisos (retorno de assinatura, etc.)
+  area?: string;               // área/departamento do funcionário
   profileComplete?: boolean;
   createdAt: string;
 }

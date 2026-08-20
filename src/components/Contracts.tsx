@@ -14,9 +14,9 @@ import {
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Plus, Search, Filter, FileText, ExternalLink, Trash2, Upload, X, Loader2, PenLine, Copy, CheckCheck } from 'lucide-react';
-import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { formatCurrency, formatDateOnly, cn } from '../lib/utils';
 import { SearchableSelect } from './ui/SearchableSelect';
-import { NumericInput } from './ui/NumericInput';
+import { MoneyInput } from './ui/MoneyInput';
 import { CONTRACT_TYPES, AREAS_BY_TYPE } from '../lib/contractTypes';
 import { generateToken, buildSignUrl, sendEmail, supplierInviteEmail } from '../lib/signatures';
 
@@ -64,6 +64,7 @@ export const Contracts: React.FC = () => {
   const { isManager, companyId, company, profile } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,6 +86,7 @@ export const Contracts: React.FC = () => {
     endDate: '',
     value: '',
     internalOwner: '',
+    responsibleUserId: '',
     description: '',
     status: 'Rascunho'
   });
@@ -110,9 +112,17 @@ export const Contracts: React.FC = () => {
       }
     );
 
+    const usersUnsubscribe = onSnapshot(
+      query(collection(db, 'users'), where('companyId', '==', companyId)),
+      (snapshot) => {
+        setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    );
+
     return () => {
       unsubscribe();
       suppliersUnsubscribe();
+      usersUnsubscribe();
     };
   }, [companyId]);
 
@@ -157,10 +167,13 @@ export const Contracts: React.FC = () => {
       }
 
       const supplier = suppliers.find(s => s.id === formData.supplierId);
+      const responsible = users.find(u => u.id === formData.responsibleUserId);
       const docRef = await addDoc(collection(db, 'contracts'), {
         ...formData,
         companyId,
         supplierName: supplier?.name || '',
+        internalOwner: responsible?.displayName || '',
+        responsibleEmail: responsible?.notificationEmail || responsible?.email || '',
         createdAt: new Date().toISOString(),
         value: Number(formData.value) || 0,
         hasPdf: !!selectedFile,
@@ -188,6 +201,7 @@ export const Contracts: React.FC = () => {
         endDate: '',
         value: '',
         internalOwner: '',
+        responsibleUserId: '',
         description: '',
         status: 'Rascunho'
       });
@@ -364,7 +378,7 @@ export const Contracts: React.FC = () => {
                     <p className="text-xs text-slate-500">{contract.area}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-sm text-slate-700">{formatDate(contract.startDate)} - {formatDate(contract.endDate)}</p>
+                    <p className="text-sm text-slate-700">{formatDateOnly(contract.startDate)} - {formatDateOnly(contract.endDate)}</p>
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-sm font-medium text-slate-900">{formatCurrency(contract.value)}</p>
@@ -495,9 +509,7 @@ export const Contracts: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700">Valor (R$)</label>
-                  <NumericInput
-                    decimal
-                    placeholder="0,00"
+                  <MoneyInput
                     value={formData.value}
                     onChange={(v) => setFormData({ ...formData, value: v })}
                   />
@@ -547,13 +559,21 @@ export const Contracts: React.FC = () => {
               </div>
               
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Responsável Interno</label>
-                <input 
+                <label className="text-sm font-medium text-slate-700">Funcionário responsável</label>
+                <select
                   required
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                  value={formData.internalOwner}
-                  onChange={e => setFormData({...formData, internalOwner: e.target.value})}
-                />
+                  value={formData.responsibleUserId}
+                  onChange={e => setFormData({ ...formData, responsibleUserId: e.target.value })}
+                >
+                  <option value="">Selecione o responsável...</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName}{u.area ? ` — ${u.area}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400">Recebe avisos de chamados deste contrato. Cadastre em Usuários.</p>
               </div>
 
               <div className="space-y-1">
